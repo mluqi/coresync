@@ -105,19 +105,38 @@ async function startServer() {
     await sequelize.authenticate();
     console.log('Database connection has been established successfully.');
     
-    // try {
-    //   const queryInterface = sequelize.getQueryInterface();
-    //   const tableInfo = await queryInterface.describeTable('users');
-    //   // if (!tableInfo.user_token) {
-    //   //   await queryInterface.addColumn('users', 'user_token', {
-    //   //     type: sequelize.Sequelize.TEXT,
-    //   //     allowNull: true
-    //   //   });
-    //   //   console.log('Successfully added user_token column to users table.');
-    //   // }
-    // } catch (dbErr) {
-    //   console.warn('Notice checking users.user_token column:', dbErr.message);
-    // }
+    // Auto-sync missing columns for critical production stability
+    try {
+      const queryInterface = sequelize.getQueryInterface();
+      const stiCols = await queryInterface.describeTable('stock_transfer_items');
+      if (!stiCols.unit) {
+        await queryInterface.addColumn('stock_transfer_items', 'unit', {
+          type: sequelize.Sequelize.STRING(50),
+          allowNull: true,
+          after: 'qty'
+        });
+        console.log('Successfully added unit column to stock_transfer_items table.');
+      }
+      if (!stiCols.conversion_ratio) {
+        await queryInterface.addColumn('stock_transfer_items', 'conversion_ratio', {
+          type: sequelize.Sequelize.DECIMAL(12, 4),
+          allowNull: true,
+          defaultValue: 1.0000,
+          after: 'unit'
+        });
+        console.log('Successfully added conversion_ratio column to stock_transfer_items table.');
+      }
+      if (stiCols.qty && stiCols.qty.type && stiCols.qty.type.includes('INT')) {
+        await queryInterface.changeColumn('stock_transfer_items', 'qty', {
+          type: sequelize.Sequelize.DECIMAL(15, 4),
+          allowNull: false,
+          defaultValue: 1.0000
+        });
+        console.log('Successfully updated qty column to DECIMAL(15,4) in stock_transfer_items table.');
+      }
+    } catch (dbErr) {
+      console.warn('Notice checking stock_transfer_items table:', dbErr.message);
+    }
 
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
