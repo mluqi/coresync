@@ -1,0 +1,404 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  --radius-3xl: 12px;
+  --radius-2xl: 10px;
+  --radius-xl: 8px;
+  --radius-lg: 6px;
+  --radius-md: 4px;
+  --radius-sm: 2px;
+}
+
+/* Crisp Enterprise Corner Radii: Prevent overly bubbly/rounded components */
+.rounded-3xl {
+  border-radius: 12px !important;
+}
+
+.rounded-2xl {
+  border-radius: 10px !important;
+}
+
+.rounded-t-2xl {
+  border-top-left-radius: 10px !important;
+  border-top-right-radius: 10px !important;
+}
+
+.rounded-b-2xl {
+  border-bottom-left-radius: 10px !important;
+  border-bottom-right-radius: 10px !important;
+}
+
+.rounded-xl {
+  border-radius: 8px !important;
+}
+
+.rounded-t-xl {
+  border-top-left-radius: 8px !important;
+  border-top-right-radius: 8px !important;
+}
+
+.rounded-b-xl {
+  border-bottom-left-radius: 8px !important;
+  border-bottom-right-radius: 8px !important;
+}
+
+.rounded-lg {
+  border-radius: 6px !important;
+}
+
+.rounded-t-lg {
+  border-top-left-radius: 6px !important;
+  border-top-right-radius: 6px !important;
+}
+
+.rounded-b-lg {
+  border-bottom-left-radius: 6px !important;
+  border-bottom-right-radius: 6px !important;
+}
+
+:root, [data-theme="indigo"] {
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-primary-light: #eef2ff;
+  --color-primary-subtle: rgba(79, 70, 229, 0.08);
+  --color-primary-border: #c7d2fe;
+  --color-primary-ring: rgba(79, 70, 229, 0.25);
+  --color-gradient-from: #4f46e5;
+  --color-gradient-to: #7c3aed;
+}
+
+[data-theme="emerald"] {
+  --color-primary: #059669;
+  --color-primary-hover: #047857;
+  --color-primary-light: #ecfdf5;
+  --color-primary-subtle: rgba(5, 150, 105, 0.08);
+  --color-primary-border: #a7f3d0;
+  --color-primary-ring: rgba(5, 150, 105, 0.25);
+  --color-gradient-from: #059669;
+  --color-gradient-to: #0d9488;
+}
+
+[data-theme="violet"] {
+  --color-primary: #7c3aed;
+  --color-primary-hover: #6d28d9;
+  --color-primary-light: #f5f3ff;
+  --color-primary-subtle: rgba(124, 58, 237, 0.08);
+  --color-primary-border: #ddd6fe;
+  --color-primary-ring: rgba(124, 58, 237, 0.25);
+  --color-gradient-from: #7c3aed;
+  --color-gradient-to: #9333ea;
+}
+
+[data-theme="blue"] {
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-light: #eff6ff;
+  --color-primary-subtle: rgba(37, 99, 235, 0.08);
+  --color-primary-border: #bfdbfe;
+  --color-primary-ring: rgba(37, 99, 235, 0.25);
+  --color-gradient-from: #2563eb;
+  --color-gradient-to: #0891b2;
+}
+
+[data-theme="amber"] {
+  --color-primary: #d97706;
+  --color-primary-hover: #b45309;
+  --color-primary-light: #fffbeb;
+  --color-primary-subtle: rgba(217, 119, 6, 0.08);
+  --color-primary-border: #fde68a;
+  --color-primary-ring: rgba(217, 119, 6, 0.25);
+  --color-gradient-from: #d97706;
+  --color-gradient-to: #ea580c;
+}
+
+[data-theme="rose"] {
+  --color-primary: #e11d48;
+  --color-primary-hover: #be123c;
+  --color-primary-light: #fff1f2;
+  --color-primary-subtle: rgba(225, 29, 72, 0.08);
+  --color-primary-border: #fecdd3;
+  --color-primary-ring: rgba(225, 29, 72, 0.25);
+  --color-gradient-from: #e11d48;
+  --color-gradient-to: #db2777;
+}
+
+[data-theme="slate"] {
+  --color-primary: #334155;
+  --color-primary-hover: #1e293b;
+  --color-primary-light: #f8fafc;
+  --color-primary-subtle: rgba(51, 65, 85, 0.08);
+  --color-primary-border: #cbd5e1;
+  --color-primary-ring: rgba(51, 65, 85, 0.25);
+  --color-gradient-from: #334155;
+  --color-gradient-to: #475569;
+}
+
+/* Global Typography & Base Settings */
+html {
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'tnum';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #f8fafc;
+  color: #0f172a;
+  accent-color: var(--color-primary);
+}
+
+/* Tabular figures for financial and tabular precision */
+table, .tabular-nums, [data-numeric] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Text balance and legibility optimizations */
+h1, h2, h3 {
+  text-wrap: balance;
+  letter-spacing: -0.025em;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+/* Theme Helper Classes for Dynamic Styling */
+.bg-theme {
+  background-color: var(--color-primary) !important;
+}
+
+.bg-theme-hover:hover {
+  background-color: var(--color-primary-hover) !important;
+}
+
+.text-theme {
+  color: var(--color-primary) !important;
+}
+
+.border-theme {
+  border-color: var(--color-primary) !important;
+}
+
+.bg-theme-light {
+  background-color: var(--color-primary-light) !important;
+}
+
+.bg-theme-subtle {
+  background-color: var(--color-primary-subtle) !important;
+}
+
+.border-theme-light {
+  border-color: var(--color-primary-border) !important;
+}
+
+.bg-theme-gradient {
+  background-image: linear-gradient(135deg, var(--color-gradient-from), var(--color-gradient-to)) !important;
+}
+
+/* Automatic Primary Accent Mapping for legacy classes */
+.bg-indigo-600 {
+  background-color: var(--color-primary) !important;
+}
+
+.hover\:bg-indigo-700:hover, .hover\:bg-indigo-600:hover {
+  background-color: var(--color-primary-hover) !important;
+}
+
+.text-indigo-600 {
+  color: var(--color-primary) !important;
+}
+
+.text-indigo-700 {
+  color: var(--color-primary-hover) !important;
+}
+
+.border-indigo-600 {
+  border-color: var(--color-primary) !important;
+}
+
+.border-indigo-500 {
+  border-color: var(--color-primary) !important;
+}
+
+.border-indigo-100, .border-indigo-200 {
+  border-color: var(--color-primary-border) !important;
+}
+
+.bg-indigo-50 {
+  background-color: var(--color-primary-light) !important;
+}
+
+.focus\:ring-indigo-500\/20:focus, .focus\:ring-indigo-600\/20:focus {
+  --tw-ring-color: var(--color-primary-ring) !important;
+}
+
+.focus\:border-indigo-600:focus, .focus\:border-indigo-500:focus {
+  border-color: var(--color-primary) !important;
+}
+
+.from-indigo-600 {
+  --tw-gradient-from: var(--color-gradient-from) var(--tw-gradient-from-position) !important;
+}
+
+.to-violet-600, .to-indigo-700 {
+  --tw-gradient-to: var(--color-gradient-to) var(--tw-gradient-to-position) !important;
+}
+
+/* Premium Enterprise Shadows & Cards */
+.shadow-card {
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.03);
+}
+
+.shadow-card-hover {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.shadow-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+}
+
+.shadow-dropdown {
+  box-shadow: 0 12px 30px -4px rgba(15, 23, 42, 0.12), 0 4px 12px -2px rgba(15, 23, 42, 0.06);
+}
+
+/* Subtle elevation overrides for standard Tailwind shadows to match enterprise feel */
+.shadow-2xs {
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.04) !important;
+}
+
+.shadow-xs {
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.03) !important;
+}
+
+.shadow-sm {
+  box-shadow: 0 2px 4px -1px rgba(15, 23, 42, 0.05), 0 1px 2px -1px rgba(15, 23, 42, 0.03) !important;
+}
+
+/* Universal Form Controls Polish */
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 3px var(--color-primary-ring) !important;
+}
+
+/* Glassmorphism helpers */
+.glass {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(228, 228, 231, 0.8);
+}
+
+.dark-glass {
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Interactive Element Feedback */
+button:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+/* Custom Scrollbar for ultra-clean UI */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Micro-Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Print CSS Stylesheet */
+@media print {
+  @page {
+    margin: 8mm;
+  }
+  
+  *, *::before, *::after {
+    box-shadow: none !important;
+    text-shadow: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Hide all screen UI, sidebars, navigations, buttons, and modal overlays */
+  aside, header, nav, button, .print\:hidden, .no-print,
+  .fixed, [class*="bg-black"], [class*="backdrop-blur"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+  }
+
+  /* Display dedicated print area */
+  #print-area, .print-area, .delivery-manifest-print, .sales-data-performance-print, .delivery-manifest-print-wrapper {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  #print-area *, .print-area *, .delivery-manifest-print *, .sales-data-performance-print *, .delivery-manifest-print-wrapper * {
+    visibility: visible !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

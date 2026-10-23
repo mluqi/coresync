@@ -1,0 +1,56 @@
+# Checklist Implementasi Skema Database & Server Boilerplate
+
+- [x] Inisialisasi file konfigurasi environment
+  - [x] Isi `backend/.env` dengan port & kredensial database local.
+  - [x] Ganti `backend/config/config.json` menjadi `backend/config/config.js` untuk membaca `.env`.
+- [x] Boilerplate Server Backend
+  - [x] Buat file `backend/server.js` (setup Express, CORS, parse body, & base handler).
+- [x] Pembuatan Sequelize Migrations
+  - [x] 01. Create Tenants & TenantModules
+  - [x] 02. Create Taxes
+  - [x] 03. Create Warehouses & ProductWarehouses
+  - [x] 04. Create Users
+  - [x] 05. Create Contacts
+  - [x] 06. Create Products
+  - [x] 07. Create IncomingBatches & StockLedger
+  - [x] 08. Create StockOpnames & StockOpnameItems
+  - [x] 09. Create PurchaseOrders & PurchaseOrderItems
+  - [x] 10. Create SalesOrders & SalesOrderItems
+  - [x] 11. Create Deliveries & DeliveryItems
+  - [x] 12. Create Invoices
+  - [x] 13. Create Returns & ReturnItems
+  - [x] 14. Create ChartOfAccounts & Payments
+  - [x] 15. Create JournalEntries & JournalEntryItems
+- [x] Pembuatan Model Sequelize (`backend/models`)
+  - [x] Hubungkan model-model di `backend/models` dengan asosiasi yang benar.
+- [x] Auth & Role Implementation
+  - [x] Setup middlewares (`authMiddleware`, `roleMiddleware`)
+  - [x] Setup auth controller (`authController`)
+  - [x] Setup routes (`authRoutes`)
+  - [x] Register auth routes di `server.js`
+- [x] Master Data API Implementation
+  - [x] Setup Taxes API (controller, route, register)
+  - [x] Setup Warehouses API (controller, route, register)
+  - [x] Setup Contacts API (controller, route, register)
+  - [x] Setup Products API (controller, route, register)
+- [x] FIFO Inventory Engine & Stock Opname API
+  - [x] Setup FIFO Engine helper (`inventoryEngine.js`)
+  - [x] Setup Stock Opname API (controller, routes, register)
+  - [x] Verify FIFO calculation (HPP & mutasi)
+- [x] Modul Transaksi (PO, SO, Surat Jalan, Invoices) API
+  - [x] Setup PO API (controller with receive logic, route, register)
+  - [x] Setup SO API (controller, route, register)
+  - [x] Setup Deliveries API (controller with FIFO stock deduction, route, register)
+  - [x] Setup Invoices API (controller with automatic PPN & totals, route, register)
+  - [x] Verify complete transaction cycle via integration test (passed!)
+- [x] Modul Finance & Laba Rugi API
+  - [x] Setup COA API (controller, route, register)
+  - [x] Setup Payments API (controller, route, register)
+  - [x] Setup Journal Entries API (controller, route, register)
+  - [x] Setup Income Statement Report API (controller, route, register)
+  - [x] Implement Auto-Journaling Engine utility (`journalEngine.js` for Invoice, Delivery, and Payments)
+  - [x] Verify complete finance & auto-journal flow via integration test (passed!)
+- [x] Verifikasi Database & Run Migrations
+  - [x] Jalankan `npx sequelize-cli db:migrate` untuk verifikasi skema database.
+  - [x] Jalankan seeder `npx sequelize-cli db:seed:all` untuk memasukkan data awal.
+  - [ ] Uji API menggunakan Postman/cURL.
