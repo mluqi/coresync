@@ -346,6 +346,7 @@ const Settings = () => {
       categories: { read: true, create: true, update: true, delete: false },
       units: { read: true, create: true, update: true, delete: false },
       stock_opname: { read: true, create: true, update: true, delete: false },
+      stock_transfers: { read: true, create: true, update: true, delete: false },
       stock_ledger: { read: true },
       finance: { read: true, create: true, update: true, delete: false },
       reports: { read: true, sales: true, purchase: true, inventory: true, finance: true }
@@ -374,7 +375,7 @@ const Settings = () => {
           if (mod === 'purchase_orders') legacyFlag = metadataPermissions.purchase !== false;
           else legacyFlag = metadataPermissions.sales !== false;
         }
-        if (mod === 'products' || mod === 'categories' || mod === 'units' || mod === 'stock_opname' || mod === 'stock_ledger') {
+        if (mod === 'products' || mod === 'categories' || mod === 'units' || mod === 'stock_opname' || mod === 'stock_transfers' || mod === 'stock_ledger') {
           if (metadataPermissions.products && typeof metadataPermissions.products === 'object') {
             result[mod] = { ...metadataPermissions.products };
             continue;
@@ -422,6 +423,7 @@ const Settings = () => {
       p.categories = { read: true, create: false, update: false, delete: false };
       p.units = { read: true, create: false, update: false, delete: false };
       p.stock_opname = { read: false, create: false, update: false, delete: false };
+      p.stock_transfers = { read: false, create: false, update: false, delete: false };
       p.stock_ledger = { read: false };
       p.finance = { read: false, create: false, update: false, delete: false };
       p.reports = { read: true, sales: true, purchase: false, inventory: false, finance: false };
@@ -437,6 +439,7 @@ const Settings = () => {
       p.categories = { read: true, create: false, update: false, delete: false };
       p.units = { read: true, create: false, update: false, delete: false };
       p.stock_opname = { read: false, create: false, update: false, delete: false };
+      p.stock_transfers = { read: false, create: false, update: false, delete: false };
       p.stock_ledger = { read: false };
       p.finance = { read: false, create: false, update: false, delete: false };
       p.reports = { read: true, sales: false, purchase: true, inventory: false, finance: false };
@@ -452,6 +455,7 @@ const Settings = () => {
       p.categories = { read: true, create: true, update: true, delete: false };
       p.units = { read: true, create: true, update: true, delete: false };
       p.stock_opname = { read: true, create: true, update: true, delete: false };
+      p.stock_transfers = { read: true, create: true, update: true, delete: false };
       p.stock_ledger = { read: true };
       p.finance = { read: false, create: false, update: false, delete: false };
       p.reports = { read: true, sales: false, purchase: false, inventory: true, finance: false };
@@ -467,6 +471,7 @@ const Settings = () => {
       p.categories = { read: true, create: false, update: false, delete: false };
       p.units = { read: true, create: false, update: false, delete: false };
       p.stock_opname = { read: false, create: false, update: false, delete: false };
+      p.stock_transfers = { read: true, create: false, update: false, delete: false };
       p.stock_ledger = { read: true };
       p.finance = { read: true, create: true, update: true, delete: true };
       p.reports = { read: true, sales: true, purchase: true, inventory: true, finance: true };
@@ -567,6 +572,7 @@ const Settings = () => {
           categories: { read: true, create: true, update: true, delete: true },
           units: { read: true, create: true, update: true, delete: true },
           stock_opname: { read: true, create: true, update: true, delete: true },
+          stock_transfers: { read: true, create: true, update: true, delete: true },
           stock_ledger: { read: true },
           finance: { read: true, create: true, update: true, delete: true },
           reports: { read: true, sales: true, purchase: true, inventory: true, finance: true }
@@ -1817,6 +1823,7 @@ const Settings = () => {
                           { group: '3. Master Barang & Inventori', key: 'categories', name: 'Kategori Barang', actions: ['read', 'create', 'update', 'delete'] },
                           { group: '3. Master Barang & Inventori', key: 'units', name: 'Satuan Barang', actions: ['read', 'create', 'update', 'delete'] },
                           { group: '3. Master Barang & Inventori', key: 'stock_opname', name: 'Stock Opname', actions: ['read', 'create', 'update', 'delete'] },
+                          { group: '3. Master Barang & Inventori', key: 'stock_transfers', name: 'Mutasi Stok Antar Gudang', actions: ['read', 'create', 'update', 'delete'] },
                           { group: '3. Master Barang & Inventori', key: 'stock_ledger', name: 'Kartu Stok (Ledger)', actions: ['read'] },
                           { group: '4. Keuangan & Akuntansi', key: 'finance', name: 'Kas, Bank & Jurnal', actions: ['read', 'create', 'update', 'delete'] },
                           { group: '5. Laporan ERP', key: 'reports', name: 'Laporan (Sales, PO, Stok, Fin)', isReport: true, actions: ['sales', 'purchase', 'inventory', 'finance'] }

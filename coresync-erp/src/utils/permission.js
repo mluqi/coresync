@@ -82,7 +82,10 @@ export const hasPermission = (user, module, action = 'read') => {
     }
   }
 
-  if (module === 'products' || module === 'units' || module === 'categories' || module === 'stock_opname' || module === 'stock_ledger') {
+  if (module === 'products' || module === 'units' || module === 'categories' || module === 'stock_opname' || module === 'stock_ledger' || module === 'stock_transfers' || module === 'inventory') {
+    if (permissions[module] && typeof permissions[module] === 'object') {
+      if (permissions[module][action] !== undefined) return !!permissions[module][action];
+    }
     if (permissions.products && typeof permissions.products === 'object') {
       if (permissions.products[action] !== undefined) return !!permissions.products[action];
     }

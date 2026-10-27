@@ -6,10 +6,10 @@ const permissionMiddleware = require('../middlewares/permissionMiddleware');
 
 router.use(authMiddleware);
 
-router.get('/', permissionMiddleware('inventory.read'), stockTransferController.getAllTransfers);
-router.get('/:id', permissionMiddleware('inventory.read'), stockTransferController.getTransferById);
-router.post('/', permissionMiddleware('inventory.create'), stockTransferController.createTransfer);
-router.put('/:id/status', permissionMiddleware('inventory.update'), stockTransferController.updateTransferStatus);
-router.delete('/:id', permissionMiddleware('inventory.delete'), stockTransferController.deleteTransfer);
+router.get('/', permissionMiddleware(['stock_transfers.read', 'inventory.read']), stockTransferController.getAllTransfers);
+router.get('/:id', permissionMiddleware(['stock_transfers.read', 'inventory.read']), stockTransferController.getTransferById);
+router.post('/', permissionMiddleware(['stock_transfers.create', 'inventory.create']), stockTransferController.createTransfer);
+router.put('/:id/status', permissionMiddleware(['stock_transfers.update', 'inventory.update']), stockTransferController.updateTransferStatus);
+router.delete('/:id', permissionMiddleware(['stock_transfers.delete', 'inventory.delete']), stockTransferController.deleteTransfer);
 
 module.exports = router;

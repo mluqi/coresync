@@ -58,7 +58,13 @@ const permissionMiddleware = (requiredPermission) => {
           if (permissions.purchase === true) return action === 'read' || req.user.role === 'ADMIN';
         }
 
-        if (module === 'products' || module === 'units' || module === 'categories' || module === 'stock_opname' || module === 'stock_ledger') {
+        if (module === 'products' || module === 'units' || module === 'categories' || module === 'stock_opname' || module === 'stock_ledger' || module === 'stock_transfers' || module === 'inventory') {
+          if (permissions[module] && typeof permissions[module] === 'object') {
+            if (permissions[module][action] !== undefined) return !!permissions[module][action];
+          }
+          if (permissions.stock_transfers && typeof permissions.stock_transfers === 'object') {
+            if (permissions.stock_transfers[action] !== undefined) return !!permissions.stock_transfers[action];
+          }
           if (permissions.products && typeof permissions.products === 'object') {
             return !!permissions.products[action];
           }

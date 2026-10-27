@@ -1,25 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import PageHeader from '../components/PageHeader';
 import ReturnFormPrintTemplate from '../components/transactions/ReturnFormPrintTemplate';
 import { 
-  ArrowLeft, 
   Printer, 
   CheckCircle2, 
   AlertCircle, 
   Loader2, 
-  RefreshCw, 
   FileText, 
-  Boxes, 
-  ChevronRight,
   Truck,
-  Calendar,
-  User,
   Clock,
-  Send,
   X,
-  Building,
   Check
 } from 'lucide-react';
 

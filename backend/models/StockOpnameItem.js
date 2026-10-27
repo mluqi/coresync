@@ -13,18 +13,21 @@ module.exports = (sequelize, DataTypes) => {
       field: 'product_id'
     },
     systemQty: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.DECIMAL(15, 4),
       allowNull: false,
+      defaultValue: 0,
       field: 'system_qty'
     },
     actualQty: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.DECIMAL(15, 4),
       allowNull: false,
+      defaultValue: 0,
       field: 'actual_qty'
     },
     adjustmentQty: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.DECIMAL(15, 4),
       allowNull: false,
+      defaultValue: 0,
       field: 'adjustment_qty'
     },
     unitName: {

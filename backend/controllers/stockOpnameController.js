@@ -120,6 +120,7 @@ exports.createStockOpname = async (req, res, next) => {
         unitName: unitName || null,
         conversionRatio: ratio,
         metadata: {
+          ...(item.metadata || {}),
           inputQty: inputQty !== undefined ? inputQty : actualQty,
           inputUnit: unitName || null,
           conversionRatio: ratio
@@ -336,6 +337,7 @@ exports.updateStockOpname = async (req, res, next) => {
           unitName: unitName || null,
           conversionRatio: ratio,
           metadata: {
+            ...(item.metadata || {}),
             inputQty: inputQty !== undefined ? inputQty : actualQty,
             inputUnit: unitName || null,
             conversionRatio: ratio

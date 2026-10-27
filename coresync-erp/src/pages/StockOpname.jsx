@@ -23,7 +23,10 @@ import {
   Lock,
   Save,
   FileSpreadsheet,
+  FileText,
   Calendar,
+  CalendarDays,
+  Upload,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { useToast } from "../context/ToastContext";
@@ -177,7 +180,80 @@ const calculateThreeTierBaseQty = (qty1, qty2, qty3, unitTiers) => {
   return q1 * r1 + q2 * r2 + q3 * r3;
 };
 
-// Break down total quantity in base units into { bigQty, smallQty }
+// Break down total quantity in base units into 3-tier units { q1, q2, q3, formatted }
+const breakdownThreeTierQty = (baseQty, tiers) => {
+  const safe = parseFloat(baseQty) || 0;
+  if (!tiers || !tiers.unit1) {
+    return { q1: safe, q2: 0, q3: 0, formatted: `${safe}` };
+  }
+
+  const u1 = tiers.unit1;
+  const u2 = tiers.unit2;
+  const u3 = tiers.unit3;
+
+  const r1 = parseFloat(u1.ratio) || 1.0;
+  const r2 = u2 ? parseFloat(u2.ratio) || 0 : 0;
+  const r3 = u3 ? parseFloat(u3.ratio) || 0 : 0;
+
+  if (safe <= 0) {
+    return { q1: 0, q2: 0, q3: 0, formatted: `0 ${u1.name}` };
+  }
+
+  let q1 = 0;
+  let remainder = safe;
+
+  if (r1 > 0) {
+    q1 = Math.floor(remainder / r1 + 0.00001);
+    remainder = Math.max(0, remainder - q1 * r1);
+  }
+
+  let q2 = 0;
+  if (u2 && r2 > 0) {
+    q2 = Math.floor(remainder / r2 + 0.00001);
+    remainder = Math.max(0, remainder - q2 * r2);
+  }
+
+  let q3 = 0;
+  if (u3 && r3 > 0) {
+    q3 = Math.round(remainder / r3);
+  } else if (!u2 && !u3) {
+    q1 = parseFloat(safe.toFixed(2));
+  }
+
+  const parts = [];
+  if (q1 > 0) parts.push(`${q1} ${u1.name}`);
+  if (q2 > 0 && u2) parts.push(`${q2} ${u2.name}`);
+  if (q3 > 0 && u3) parts.push(`${q3} ${u3.name}`);
+  if (parts.length === 0) parts.push(`0 ${u1.name}`);
+
+  return {
+    q1,
+    q2,
+    q3,
+    formatted: parts.join(" + "),
+  };
+};
+
+// Format 3-tier quantity text
+const formatThreeTierBreakdownText = (qty1, qty2, qty3, tiers) => {
+  const q1 = parseFloat(qty1) || 0;
+  const q2 = parseFloat(qty2) || 0;
+  const q3 = parseFloat(qty3) || 0;
+
+  if (!tiers || !tiers.unit1) {
+    return `${q1}`;
+  }
+
+  const parts = [];
+  if (q1 > 0) parts.push(`${q1} ${tiers.unit1.name}`);
+  if (q2 > 0 && tiers.unit2) parts.push(`${q2} ${tiers.unit2.name}`);
+  if (q3 > 0 && tiers.unit3) parts.push(`${q3} ${tiers.unit3.name}`);
+  if (parts.length === 0) parts.push(`0 ${tiers.unit1.name}`);
+
+  return parts.join(" + ");
+};
+
+// Break down total quantity in base units into { bigQty, smallQty } (legacy 2-tier fallback)
 const breakdownQty = (qty, structure) => {
   const safe = parseFloat(qty) || 0;
   if (!structure.hasMultiUnit) {
@@ -225,40 +301,49 @@ const formatBreakdownText = (bigQty, smallQty, structure) => {
   return `0 ${structure.bigUnitName}`;
 };
 
-// Format difference badge info
-const formatDiffBadge = (actualBase, systemBase, structure) => {
+// Format difference badge info (supports both 3-tier and 2-tier)
+const formatDiffBadge = (actualBase, systemBase, structure, tiers) => {
   const diff = (parseFloat(actualBase) || 0) - (parseFloat(systemBase) || 0);
   if (Math.abs(diff) < 0.0001) {
     return { label: "Sesuai", type: "match", value: 0 };
   }
 
-  if (!structure.hasMultiUnit) {
-    const sign = diff > 0 ? `+${diff}` : `${diff}`;
+  if (tiers && tiers.unit1) {
+    const diffTier = breakdownThreeTierQty(Math.abs(diff), tiers);
+    const sign = diff > 0 ? "+" : "-";
     return {
-      label: `${sign} ${structure.bigUnitName}`,
+      label: `${sign}${diffTier.formatted}`,
       type: diff > 0 ? "plus" : "minus",
       value: diff,
     };
   }
 
-  const { bigQty: diffB, smallQty: diffS } = breakdownQty(
-    Math.abs(diff),
-    structure,
-  );
-  let diffStr = "";
-  if (diffB > 0 && diffS > 0) {
-    diffStr = `${diffB} ${structure.bigUnitName} + ${diffS} ${structure.smallUnitName}`;
-  } else if (diffB > 0) {
-    diffStr = `${diffB} ${structure.bigUnitName}`;
-  } else {
-    diffStr = `${diffS} ${structure.smallUnitName}`;
+  if (structure && structure.hasMultiUnit) {
+    const { bigQty: diffB, smallQty: diffS } = breakdownQty(
+      Math.abs(diff),
+      structure,
+    );
+    let diffStr = "";
+    if (diffB > 0 && diffS > 0) {
+      diffStr = `${diffB} ${structure.bigUnitName} + ${diffS} ${structure.smallUnitName}`;
+    } else if (diffB > 0) {
+      diffStr = `${diffB} ${structure.bigUnitName}`;
+    } else {
+      diffStr = `${diffS} ${structure.smallUnitName}`;
+    }
+    return {
+      label: diff > 0 ? `+${diffStr}` : `-${diffStr}`,
+      type: diff > 0 ? "plus" : "minus",
+      value: diff,
+    };
   }
 
-  if (diff > 0) {
-    return { label: `+${diffStr}`, type: "plus", value: diff };
-  } else {
-    return { label: `-${diffStr}`, type: "minus", value: diff };
-  }
+  const sign = diff > 0 ? `+${diff}` : `${diff}`;
+  return {
+    label: `${sign} ${structure?.bigUnitName || ""}`,
+    type: diff > 0 ? "plus" : "minus",
+    value: diff,
+  };
 };
 
 const formatStockBreakdownClient = (qty, baseUnitName, availableUnits = []) => {
@@ -356,6 +441,8 @@ const StockOpname = () => {
   const [manualSoItems, setManualSoItems] = useState([]);
   const [showSystemRef, setShowSystemRef] = useState(false);
   const [manualSoLoading, setManualSoLoading] = useState(false);
+  const [manualSoFormatMode, setManualSoFormatMode] = useState("daily"); // "daily" | "weekly"
+  const [manualSoActiveDay, setManualSoActiveDay] = useState(1); // 1..7
 
   // Confirmation Modal State
   const [confirmConfig, setConfirmConfig] = useState({
@@ -505,16 +592,9 @@ const StockOpname = () => {
           ? parseFloat(warehouseStock.stock) || 0
           : 0;
 
+        const tiers = getProductThreeTierUnits(p);
+        const sysTier = breakdownThreeTierQty(systemQty, tiers);
         const structure = getProductUnitStructure(p);
-        const { bigQty: sysBig, smallQty: sysSmall } = breakdownQty(
-          systemQty,
-          structure,
-        );
-        const systemBreakdownText = formatBreakdownText(
-          sysBig,
-          sysSmall,
-          structure,
-        );
 
         // Find existing saved item in draft
         const draftItem = (draft.items || []).find((i) => i.productId === p.id);
@@ -523,19 +603,33 @@ const StockOpname = () => {
           const meta = draftItem.metadata || {};
           const actualQty =
             draftItem.actualQty !== undefined ? draftItem.actualQty : systemQty;
-          const { bigQty: actBig, smallQty: actSmall } = breakdownQty(
-            actualQty,
-            structure,
-          );
 
-          const besarInput =
-            meta.besarInput !== undefined ? meta.besarInput : actBig;
-          const kecilInput =
-            meta.kecilInput !== undefined ? meta.kecilInput : actSmall;
-          const actualBreakdownText = formatBreakdownText(
-            besarInput,
-            kecilInput,
-            structure,
+          let q1 =
+            meta.qty1 !== undefined
+              ? meta.qty1
+              : meta.besarInput !== undefined
+                ? meta.besarInput
+                : null;
+          let q2 = meta.qty2 !== undefined ? meta.qty2 : null;
+          let q3 =
+            meta.qty3 !== undefined
+              ? meta.qty3
+              : meta.kecilInput !== undefined
+                ? meta.kecilInput
+                : null;
+
+          if (q1 === null && q2 === null && q3 === null) {
+            const actTier = breakdownThreeTierQty(actualQty, tiers);
+            q1 = actTier.q1;
+            q2 = actTier.q2;
+            q3 = actTier.q3;
+          }
+
+          const actualBreakdownText = formatThreeTierBreakdownText(
+            q1,
+            q2,
+            q3,
+            tiers,
           );
 
           return {
@@ -546,22 +640,21 @@ const StockOpname = () => {
             categoryName: p.category?.name || p.metadata?.category || "",
             baseUnitName: (p.unit || "PCS").toUpperCase(),
             systemQty,
-            systemBigQty: sysBig,
-            systemSmallQty: sysSmall,
-            systemBreakdownText,
+            systemBigQty: sysTier.q1,
+            systemSmallQty: sysTier.q3,
+            systemBreakdownText: sysTier.formatted,
             structure,
-            besarInput,
-            kecilInput,
+            tiers,
+            qty1: q1 !== "" && q1 !== null ? q1 : 0,
+            qty2: q2 !== "" && q2 !== null ? q2 : 0,
+            qty3: q3 !== "" && q3 !== null ? q3 : 0,
+            besarInput: q1 !== "" && q1 !== null ? q1 : 0,
+            kecilInput: q3 !== "" && q3 !== null ? q3 : 0,
             actualQty,
             actualBreakdownText,
-            expiredBesar:
-              detectedType === "EXPIRED"
-                ? meta.expiredBesar !== undefined
-                  ? meta.expiredBesar
-                  : meta.inputQty || 0
-                : 0,
-            expiredKecil:
-              detectedType === "EXPIRED" ? meta.expiredKecil || 0 : 0,
+            expiredBesar: meta.expiredBesar || 0,
+            expiredSedang: meta.expiredSedang || 0,
+            expiredKecil: meta.expiredKecil || 0,
           };
         } else {
           return {
@@ -572,15 +665,20 @@ const StockOpname = () => {
             categoryName: p.category?.name || p.metadata?.category || "",
             baseUnitName: (p.unit || "PCS").toUpperCase(),
             systemQty,
-            systemBigQty: sysBig,
-            systemSmallQty: sysSmall,
-            systemBreakdownText,
+            systemBigQty: sysTier.q1,
+            systemSmallQty: sysTier.q3,
+            systemBreakdownText: sysTier.formatted,
             structure,
-            besarInput: sysBig,
-            kecilInput: sysSmall,
+            tiers,
+            qty1: sysTier.q1,
+            qty2: sysTier.q2,
+            qty3: sysTier.q3,
+            besarInput: sysTier.q1,
+            kecilInput: sysTier.q3,
             actualQty: systemQty,
-            actualBreakdownText: systemBreakdownText,
+            actualBreakdownText: sysTier.formatted,
             expiredBesar: 0,
+            expiredSedang: 0,
             expiredKecil: 0,
           };
         }
@@ -605,16 +703,9 @@ const StockOpname = () => {
         ? parseFloat(warehouseStock.stock) || 0
         : 0;
 
+      const tiers = getProductThreeTierUnits(p);
+      const sysTier = breakdownThreeTierQty(systemQty, tiers);
       const structure = getProductUnitStructure(p);
-      const { bigQty: sysBig, smallQty: sysSmall } = breakdownQty(
-        systemQty,
-        structure,
-      );
-      const systemBreakdownText = formatBreakdownText(
-        sysBig,
-        sysSmall,
-        structure,
-      );
 
       return {
         productId: p.id,
@@ -624,15 +715,20 @@ const StockOpname = () => {
         categoryName: p.category?.name || p.metadata?.category || "",
         baseUnitName: (p.unit || "PCS").toUpperCase(),
         systemQty,
-        systemBigQty: sysBig,
-        systemSmallQty: sysSmall,
-        systemBreakdownText,
+        systemBigQty: sysTier.q1,
+        systemSmallQty: sysTier.q3,
+        systemBreakdownText: sysTier.formatted,
         structure,
-        besarInput: sysBig,
-        kecilInput: sysSmall,
+        tiers,
+        qty1: sysTier.q1,
+        qty2: sysTier.q2,
+        qty3: sysTier.q3,
+        besarInput: sysTier.q1,
+        kecilInput: sysTier.q3,
         actualQty: systemQty,
-        actualBreakdownText: systemBreakdownText,
+        actualBreakdownText: sysTier.formatted,
         expiredBesar: 0,
+        expiredSedang: 0,
         expiredKecil: 0,
       };
     });
@@ -646,60 +742,76 @@ const StockOpname = () => {
 
   const handleMultiUnitQtyChange = (index, unitType, value) => {
     const updated = [...opnameItems];
-    const item = updated[index];
-    const struct = item.structure;
+    const item = { ...updated[index] };
+    const tiers = item.tiers || getProductThreeTierUnits(item);
+
+    if (unitType === "qty1" || unitType === "besar") {
+      item.qty1 = value;
+      item.besarInput = value;
+    } else if (unitType === "qty2" || unitType === "sedang") {
+      item.qty2 = value;
+    } else if (unitType === "qty3" || unitType === "kecil") {
+      item.qty3 = value;
+      item.kecilInput = value;
+    }
 
     if (opnameType === "EXPIRED") {
-      if (unitType === "besar") item.expiredBesar = value;
-      if (unitType === "kecil") item.expiredKecil = value;
+      if (unitType === "qty1" || unitType === "besar")
+        item.expiredBesar = value;
+      if (unitType === "qty2" || unitType === "sedang")
+        item.expiredSedang = value;
+      if (unitType === "qty3" || unitType === "kecil")
+        item.expiredKecil = value;
 
-      const expBase = combineToActualBase(
+      const expBase = calculateThreeTierBaseQty(
         item.expiredBesar,
+        item.expiredSedang,
         item.expiredKecil,
-        struct,
+        tiers,
       );
-      item.actualQty = Math.max(0, item.systemQty - expBase);
-      const { bigQty: actBig, smallQty: actSmall } = breakdownQty(
-        item.actualQty,
-        struct,
+      item.actualQty = Math.max(
+        0,
+        parseFloat((item.systemQty - expBase).toFixed(4)),
       );
-      item.actualBreakdownText = formatBreakdownText(actBig, actSmall, struct);
+      const actTier = breakdownThreeTierQty(item.actualQty, tiers);
+      item.actualBreakdownText = actTier.formatted;
     } else {
-      if (unitType === "besar") item.besarInput = value;
-      if (unitType === "kecil") item.kecilInput = value;
-
-      item.actualQty = combineToActualBase(
-        item.besarInput,
-        item.kecilInput,
-        struct,
+      const actualQty = calculateThreeTierBaseQty(
+        item.qty1,
+        item.qty2,
+        item.qty3,
+        tiers,
       );
-      item.actualBreakdownText = formatBreakdownText(
-        item.besarInput,
-        item.kecilInput,
-        struct,
+      item.actualQty = parseFloat(actualQty.toFixed(4));
+      item.actualBreakdownText = formatThreeTierBreakdownText(
+        item.qty1,
+        item.qty2,
+        item.qty3,
+        tiers,
       );
     }
 
+    updated[index] = item;
     setOpnameItems(updated);
   };
 
   const handleTypeChange = (type) => {
     setOpnameType(type);
     const resetItems = opnameItems.map((item) => {
-      const struct = item.structure;
-      const { bigQty: sysBig, smallQty: sysSmall } = breakdownQty(
-        item.systemQty,
-        struct,
-      );
-      const systemBreakdownText = formatBreakdownText(sysBig, sysSmall, struct);
+      const tiers = item.tiers || getProductThreeTierUnits(item);
+      const sysTier = breakdownThreeTierQty(item.systemQty, tiers);
 
       return {
         ...item,
-        besarInput: sysBig,
-        kecilInput: sysSmall,
+        qty1: sysTier.q1,
+        qty2: sysTier.q2,
+        qty3: sysTier.q3,
+        besarInput: sysTier.q1,
+        kecilInput: sysTier.q3,
         actualQty: item.systemQty,
-        actualBreakdownText: systemBreakdownText,
+        actualBreakdownText: sysTier.formatted,
         expiredBesar: 0,
+        expiredSedang: 0,
         expiredKecil: 0,
       };
     });
@@ -713,28 +825,31 @@ const StockOpname = () => {
 
     try {
       const itemsPayload = opnameItems.map((item) => {
+        const tiers = item.tiers || getProductThreeTierUnits(item);
         const struct = item.structure;
         return {
           productId: item.productId,
           systemQty: item.systemQty,
           actualQty: item.actualQty,
-          unitName: struct.bigUnitName,
-          conversionRatio: struct.bigRatio,
+          unitName: tiers.unit1?.name || struct.bigUnitName,
+          conversionRatio: tiers.unit1?.ratio || struct.bigRatio,
           metadata: {
-            hasMultiUnit: struct.hasMultiUnit,
-            besarInput: item.besarInput,
-            besarUnit: struct.bigUnitName,
-            kecilInput: item.kecilInput,
-            kecilUnit: struct.smallUnitName,
-            capacity: struct.capacity,
+            hasMultiUnit: !!(tiers.unit2 || tiers.unit3),
+            qty1: item.qty1,
+            unit1: tiers.unit1?.name,
+            qty2: item.qty2,
+            unit2: tiers.unit2?.name || "",
+            qty3: item.qty3,
+            unit3: tiers.unit3?.name || "",
             actualQty: item.actualQty,
             actualBreakdownText: item.actualBreakdownText,
             expiredBesar: item.expiredBesar,
+            expiredSedang: item.expiredSedang,
             expiredKecil: item.expiredKecil,
           },
           notes:
             opnameType === "EXPIRED"
-              ? `Expired: ${formatBreakdownText(item.expiredBesar, item.expiredKecil, struct)}`
+              ? `Expired: ${item.actualBreakdownText}`
               : `Fisik: ${item.actualBreakdownText}`,
         };
       });
@@ -1094,6 +1209,16 @@ const StockOpname = () => {
   };
 
   // --- Manual SO Form Methods ---
+  const initWeeklyData = () => ({
+    d1: { qty1: "", qty2: "", qty3: "" },
+    d2: { qty1: "", qty2: "", qty3: "" },
+    d3: { qty1: "", qty2: "", qty3: "" },
+    d4: { qty1: "", qty2: "", qty3: "" },
+    d5: { qty1: "", qty2: "", qty3: "" },
+    d6: { qty1: "", qty2: "", qty3: "" },
+    d7: { qty1: "", qty2: "", qty3: "" },
+  });
+
   const loadManualSoItems = async (whId) => {
     try {
       setManualSoLoading(true);
@@ -1117,6 +1242,7 @@ const StockOpname = () => {
             qty2: "",
             qty3: "",
             notes: "",
+            weekly: initWeeklyData(),
           };
         });
         setManualSoItems(mapped);
@@ -1143,6 +1269,7 @@ const StockOpname = () => {
             qty2: "",
             qty3: "",
             notes: "",
+            weekly: initWeeklyData(),
           };
         });
         setManualSoItems(mapped);
@@ -1166,6 +1293,7 @@ const StockOpname = () => {
     setManualSoAuditor(user?.name || "");
     setManualSoSearch("");
     setShowSystemRef(false);
+    setManualSoActiveDay(1);
     setManualSoModalOpen(true);
     await loadManualSoItems(whId);
   };
@@ -1175,6 +1303,28 @@ const StockOpname = () => {
       prev.map((item) => {
         if (item.productId === productId) {
           return { ...item, [field]: value };
+        }
+        return item;
+      }),
+    );
+  };
+
+  const handleManualSoWeeklyChange = (productId, dayKey, field, value) => {
+    setManualSoItems((prev) =>
+      prev.map((item) => {
+        if (item.productId === productId) {
+          const currentWeekly = item.weekly || initWeeklyData();
+          const updatedDay = {
+            ...(currentWeekly[dayKey] || { qty1: "", qty2: "", qty3: "" }),
+            [field]: value,
+          };
+          return {
+            ...item,
+            weekly: {
+              ...currentWeekly,
+              [dayKey]: updatedDay,
+            },
+          };
         }
         return item;
       }),
@@ -1203,7 +1353,6 @@ const StockOpname = () => {
           day: "numeric",
         });
 
-    // Filter items according to search if any
     const itemsToPrint = manualSoItems.filter((item) => {
       if (!manualSoSearch.trim()) return true;
       const q = manualSoSearch.toLowerCase().trim();
@@ -1334,6 +1483,614 @@ const StockOpname = () => {
     printWindow.print();
   };
 
+  const getSevenDaysList = (startDateStr) => {
+    let base;
+    if (startDateStr) {
+      const parts = startDateStr.split("-");
+      if (parts.length === 3) {
+        base = new Date(
+          parseInt(parts[0], 10),
+          parseInt(parts[1], 10) - 1,
+          parseInt(parts[2], 10),
+        );
+      } else {
+        base = new Date(startDateStr);
+      }
+    } else {
+      base = new Date();
+    }
+    if (isNaN(base.getTime())) base = new Date();
+
+    const dayNamesFull = [
+      "Minggu",
+      "Senin",
+      "Selasa",
+      "Rabu",
+      "Kamis",
+      "Jumat",
+      "Sabtu",
+    ];
+    const dayNamesShort = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+    const days = [];
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(
+        base.getFullYear(),
+        base.getMonth(),
+        base.getDate() + i,
+      );
+      const dateNum = String(d.getDate()).padStart(2, "0");
+      const monthNum = String(d.getMonth() + 1).padStart(2, "0");
+      const dateMonth = `${dateNum}/${monthNum}`;
+      const dayName = dayNamesFull[d.getDay()];
+      const dayShort = dayNamesShort[d.getDay()];
+
+      days.push({
+        dayIndex: i + 1,
+        dateMonth,
+        dayName,
+        dayShort,
+        subLabel: dayName,
+        fullHeader: `${dayName} (${dateMonth})`,
+      });
+    }
+    return days;
+  };
+
+  // Cetak Formulir Mingguan Format Portrait (PDF / Cetak A4)
+  const handlePrintWeeklyPortraitManualSoForm = () => {
+    const wh =
+      warehouses.find(
+        (w) => parseInt(w.id) === parseInt(manualSoWarehouseId),
+      ) || {};
+    const whName = wh.name || "Gudang";
+    const whCode = wh.metadata?.code || wh.code || `WH-00${wh.id || ""}`;
+    const printWindow = window.open("", "_blank");
+    const safeDate = manualSoDate || new Date().toISOString().split("T")[0];
+    const opnameDateFormatted = new Date(safeDate).toLocaleDateString("id-ID", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+
+    const sevenDays = getSevenDaysList(safeDate);
+
+    const itemsToPrint = manualSoItems.filter((item) => {
+      if (!manualSoSearch.trim()) return true;
+      const q = manualSoSearch.toLowerCase().trim();
+      return (
+        item.name.toLowerCase().includes(q) ||
+        item.sku.toLowerCase().includes(q)
+      );
+    });
+
+    const rowsHtml = itemsToPrint
+      .map((item, index) => {
+        const u2Name = item.unit2?.name || null;
+        const u3Name = item.unit3?.name || null;
+
+        let daysHtml = "";
+        for (let d = 1; d <= 7; d++) {
+          const dayData = item.weekly?.[`d${d}`] || {};
+          const q1 =
+            dayData.qty1 !== undefined && dayData.qty1 !== ""
+              ? dayData.qty1
+              : d === 1 && item.qty1
+                ? item.qty1
+                : "";
+          const q2 =
+            dayData.qty2 !== undefined && dayData.qty2 !== ""
+              ? dayData.qty2
+              : d === 1 && item.qty2
+                ? item.qty2
+                : "";
+          const q3 =
+            dayData.qty3 !== undefined && dayData.qty3 !== ""
+              ? dayData.qty3
+              : d === 1 && item.qty3
+                ? item.qty3
+                : "";
+
+          const c1 = `<td class="cell-val">${q1}</td>`;
+          const c2 = u2Name
+            ? `<td class="cell-val">${q2}</td>`
+            : `<td class="cell-dash">-</td>`;
+          const c3 = u3Name
+            ? `<td class="cell-val">${q3}</td>`
+            : `<td class="cell-dash">-</td>`;
+          daysHtml += `${c1}${c2}${c3}`;
+        }
+
+        return `
+        <tr>
+          <td style="text-align: center; font-weight: bold; color: #475569; font-size: 7.5px;">${index + 1}</td>
+          <td class="prod-name-cell" title="${item.name || ""}">${item.name || "-"}</td>
+          ${daysHtml}
+          <td></td>
+        </tr>
+      `;
+      })
+      .join("");
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Formulir SO Mingguan Portrait (PDF) - ${whName}</title>
+          <style>
+            @page { size: A4 portrait; margin: 5mm 3.5mm; }
+            body { 
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+              padding: 0; 
+              color: #0f172a; 
+              font-size: 8px; 
+              -webkit-print-color-adjust: exact; 
+              print-color-adjust: exact; 
+            }
+            .header-box { border-bottom: 1.5px solid #0f172a; padding-bottom: 3px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: flex-end; }
+            h2 { margin: 0; font-size: 10.5px; color: #0f172a; text-transform: uppercase; letter-spacing: 0.2px; font-weight: 800; }
+            p { margin: 0; color: #475569; font-size: 8px; }
+            .meta-info { font-size: 8px; text-align: right; }
+            table { width: 100%; border-collapse: collapse; margin-top: 2px; table-layout: fixed; }
+            thead { display: table-header-group; }
+            tr { page-break-inside: avoid; }
+            th, td { border: 1px solid #64748b; padding: 1.5px 1px; vertical-align: middle; }
+            th { text-transform: uppercase; font-size: 7.5px; font-weight: 800; color: #0f172a; text-align: center; }
+            .day-header { background-color: #f1f5f9; border-bottom: 1px solid #64748b; }
+            .sub-th { font-size: 6.5px; font-weight: 700; background-color: #f8fafc; color: #475569; width: 18px; }
+            tr:nth-child(even) { background-color: #fbfcfd; }
+            .prod-name-cell { 
+              font-weight: 600; 
+              color: #0f172a; 
+              font-size: 8px; 
+              line-height: 1.1; 
+              padding-left: 3px; 
+              white-space: nowrap; 
+              overflow: hidden; 
+              text-overflow: ellipsis; 
+              max-width: 140px; 
+            }
+            .cell-val { text-align: center; font-size: 8px; font-family: monospace; font-weight: bold; height: 16px; }
+            .cell-dash { text-align: center; color: #cbd5e1; background: #f8fafc; font-size: 7px; }
+            .footer-sign { margin-top: 14px; display: flex; justify-content: space-between; font-size: 8px; page-break-inside: avoid; }
+            .sign-box { width: 150px; text-align: center; }
+            .line { border-bottom: 1px solid #0f172a; margin-top: 28px; }
+          </style>
+        </head>
+        <body>
+          <div class="header-box">
+            <div>
+              <h2>FORMULIR STOCK OPNAME MINGGUAN (HITUNG FISIK 7 HARI)</h2>
+              <p>Gudang: <strong>${whName}</strong> (${whCode}) | Mulai: <strong>${opnameDateFormatted}</strong></p>
+            </div>
+            <div class="meta-info">
+              <p>Petugas: <strong>${manualSoAuditor || "...................."}</strong> | Total: <strong>${itemsToPrint.length} Produk</strong></p>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th rowspan="2" style="width: 18px;">No</th>
+                <th rowspan="2" style="text-align: left; width: 140px; padding-left: 4px;">Nama Produk</th>
+                ${sevenDays
+                  .map(
+                    (d) => `
+                  <th colspan="3" class="day-header" style="${
+                    d.dayIndex === 1
+                      ? "background-color: #e0f2fe; color: #0369a1;"
+                      : ""
+                  }">
+                    <div style="font-size: 7.5px; font-weight: 800;">${d.dayName}</div>
+                    <div style="font-size: 6.5px; font-weight: 600; opacity: 0.9;">${d.dateMonth}</div>
+                  </th>
+                `,
+                  )
+                  .join("")}
+                <th rowspan="2" style="width: 26px;">Paraf</th>
+              </tr>
+              <tr>
+                ${sevenDays
+                  .map(
+                    () => `
+                  <th class="sub-th">S1</th>
+                  <th class="sub-th">S2</th>
+                  <th class="sub-th">S3</th>
+                `,
+                  )
+                  .join("")}
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+          <div class="footer-sign">
+            <div class="sign-box">
+              <p>Petugas Penghitung</p>
+              <div class="line"></div>
+              <p style="margin-top: 2px; color: #64748b;">( ${manualSoAuditor || "Tanda Tangan"} )</p>
+            </div>
+            <div class="sign-box">
+              <p>Petugas Verifikasi / Checker</p>
+              <div class="line"></div>
+              <p style="margin-top: 2px; color: #64748b;">( Tanda Tangan )</p>
+            </div>
+            <div class="sign-box">
+              <p>Kepala Gudang / Supervisor</p>
+              <div class="line"></div>
+              <p style="margin-top: 2px; color: #64748b;">( Tanda Tangan )</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+  };
+
+  // Unduh Formulir Mingguan Format Word (.doc Portrait)
+  const handleDownloadWordWeeklyPortraitManualSo = () => {
+    toast.info("Menyiapkan dokumen Word Form SO Mingguan (Portrait)...");
+    const wh =
+      warehouses.find(
+        (w) => parseInt(w.id) === parseInt(manualSoWarehouseId),
+      ) || {};
+    const whName = wh.name || "Gudang";
+    const whCode = wh.metadata?.code || wh.code || `WH-00${wh.id || ""}`;
+    const safeDate = manualSoDate || new Date().toISOString().split("T")[0];
+    const opnameDateFormatted = new Date(safeDate).toLocaleDateString("id-ID", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+
+    const sevenDays = getSevenDaysList(safeDate);
+
+    const itemsToExport = manualSoItems.filter((item) => {
+      if (!manualSoSearch.trim()) return true;
+      const q = manualSoSearch.toLowerCase().trim();
+      return (
+        item.name.toLowerCase().includes(q) ||
+        item.sku.toLowerCase().includes(q)
+      );
+    });
+
+    const rowsHtml = itemsToExport
+      .map((item, index) => {
+        const u2Name = item.unit2?.name || null;
+        const u3Name = item.unit3?.name || null;
+
+        let daysHtml = "";
+        for (let d = 1; d <= 7; d++) {
+          const dayData = item.weekly?.[`d${d}`] || {};
+          const q1 =
+            dayData.qty1 !== undefined && dayData.qty1 !== ""
+              ? dayData.qty1
+              : d === 1 && item.qty1
+                ? item.qty1
+                : "";
+          const q2 =
+            dayData.qty2 !== undefined && dayData.qty2 !== ""
+              ? dayData.qty2
+              : d === 1 && item.qty2
+                ? item.qty2
+                : "";
+          const q3 =
+            dayData.qty3 !== undefined && dayData.qty3 !== ""
+              ? dayData.qty3
+              : d === 1 && item.qty3
+                ? item.qty3
+                : "";
+
+          const c1 = `<td align="center" style="font-weight: bold; height: 14pt; font-size: 7.5pt;">${q1}</td>`;
+          const c2 = u2Name
+            ? `<td align="center" style="font-weight: bold; height: 14pt; font-size: 7.5pt;">${q2}</td>`
+            : `<td align="center" style="color: #999; background-color: #f7f7f7; font-size: 7pt;">-</td>`;
+          const c3 = u3Name
+            ? `<td align="center" style="font-weight: bold; height: 14pt; font-size: 7.5pt;">${q3}</td>`
+            : `<td align="center" style="color: #999; background-color: #f7f7f7; font-size: 7pt;">-</td>`;
+          daysHtml += `${c1}${c2}${c3}`;
+        }
+
+        return `
+        <tr>
+          <td align="center" style="font-weight: bold; font-size: 7pt;">${index + 1}</td>
+          <td style="font-size: 7.5pt; font-weight: 600; padding: 1.5pt 3pt; height: 14pt; white-space: nowrap;">${item.name || "-"}</td>
+          ${daysHtml}
+        </tr>
+      `;
+      })
+      .join("");
+
+    const wordHtml = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+        <head>
+          <meta charset='utf-8'>
+          <!--[if gte mso 9]>
+          <xml>
+            <w:WordDocument>
+              <w:View>Print</w:View>
+              <w:Zoom>100</w:Zoom>
+              <w:DoNotOptimizeForBrowser/>
+            </w:WordDocument>
+          </xml>
+          <![endif]-->
+          <style>
+            @page Section1 {
+              size: 595.3pt 841.9pt; /* A4 Portrait */
+              margin: 14.4pt 12.0pt 14.4pt 12.0pt;
+              mso-header-margin: 12.0pt;
+              mso-footer-margin: 12.0pt;
+              mso-paper-source: 0;
+            }
+            div.Section1 { page: Section1; }
+            body { font-family: Calibri, Arial, sans-serif; font-size: 7.5pt; color: #000; }
+            table { width: 100%; border-collapse: collapse; margin-top: 4pt; table-layout: fixed; }
+            th, td { border: 0.5pt solid #444; padding: 2pt 1pt; vertical-align: middle; }
+            th { text-transform: uppercase; font-size: 6.5pt; font-weight: bold; text-align: center; background-color: #f2f2f2; }
+            .day-header { background-color: #e6f0fa; font-size: 7pt; font-weight: bold; text-align: center; }
+            .sub-th { font-size: 6pt; font-weight: bold; background-color: #f8f8f8; }
+            .header-info { margin-bottom: 4pt; }
+            .header-info h2 { font-size: 10pt; margin: 0 0 2pt 0; text-transform: uppercase; font-weight: bold; }
+            .header-info p { margin: 0; font-size: 7pt; color: #444; }
+            .footer-sign { margin-top: 16pt; width: 100%; }
+            .footer-sign td { border: none; padding: 2pt; vertical-align: top; text-align: center; font-size: 7pt; }
+            .sign-line { border-bottom: 0.5pt solid #000; height: 30pt; width: 80%; margin: 0 auto; }
+          </style>
+        </head>
+        <body>
+          <div class="Section1">
+            <div class="header-info">
+              <h2>FORMULIR STOCK OPNAME MINGGUAN (HITUNG FISIK 7 HARI)</h2>
+              <p>Gudang: <b>${whName}</b> (${whCode}) | Mulai: <b>${opnameDateFormatted}</b> | Petugas: <b>${manualSoAuditor || "...................."}</b> | Total: <b>${itemsToExport.length} Produk</b></p>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th rowspan="2" style="width: 16pt;">No</th>
+                  <th rowspan="2" style="text-align: left; width: 147pt; padding-left: 3pt;">Nama Produk</th>
+                  ${sevenDays
+                    .map(
+                      (d) => `
+                    <th colspan="3" class="day-header">
+                      <b>${d.dayName}</b><br><span style="font-size: 5.5pt; font-weight: normal;">${d.dateMonth}</span>
+                    </th>
+                  `,
+                    )
+                    .join("")}
+                </tr>
+                <tr>
+                  ${sevenDays
+                    .map(
+                      () => `
+                    <th class="sub-th" style="width: 14pt;">S1</th>
+                    <th class="sub-th" style="width: 14pt;">S2</th>
+                    <th class="sub-th" style="width: 14pt;">S3</th>
+                  `,
+                    )
+                    .join("")}
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+            <table class="footer-sign">
+              <tr>
+                <td>
+                  <p>Petugas Penghitung</p>
+                  <div class="sign-line"></div>
+                  <p style="margin-top: 2pt;">( ${manualSoAuditor || "...................."} )</p>
+                </td>
+                <td>
+                  <p>Petugas Verifikasi / Checker</p>
+                  <div class="sign-line"></div>
+                  <p style="margin-top: 2pt;">( .................... )</p>
+                </td>
+                <td>
+                  <p>Kepala Gudang / Supervisor</p>
+                  <div class="sign-line"></div>
+                  <p style="margin-top: 2pt;">( .................... )</p>
+                </td>
+              </tr>
+            </table>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const blob = new Blob(["\ufeff" + wordHtml], {
+      type: "application/msword;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Form_SO_Mingguan_Portrait_${whName}_${safeDate}.doc`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success("File Word Form SO Mingguan (Portrait) berhasil diunduh!");
+  };
+
+  // Cetak Formulir Mingguan Format Landscape
+  const handlePrintWeeklyManualSoForm = () => {
+    const wh =
+      warehouses.find(
+        (w) => parseInt(w.id) === parseInt(manualSoWarehouseId),
+      ) || {};
+    const whName = wh.name || "Gudang";
+    const whCode = wh.metadata?.code || wh.code || `WH-00${wh.id || ""}`;
+    const printWindow = window.open("", "_blank");
+    const safeDate = manualSoDate || new Date().toISOString().split("T")[0];
+    const opnameDateFormatted = new Date(safeDate).toLocaleDateString("id-ID", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+
+    const sevenDays = getSevenDaysList(safeDate);
+
+    const itemsToPrint = manualSoItems.filter((item) => {
+      if (!manualSoSearch.trim()) return true;
+      const q = manualSoSearch.toLowerCase().trim();
+      return (
+        item.name.toLowerCase().includes(q) ||
+        item.sku.toLowerCase().includes(q)
+      );
+    });
+
+    const rowsHtml = itemsToPrint
+      .map((item, index) => {
+        const u2Name = item.unit2?.name || null;
+        const u3Name = item.unit3?.name || null;
+
+        let daysHtml = "";
+        for (let d = 1; d <= 7; d++) {
+          const dayData = item.weekly?.[`d${d}`] || {};
+          const q1 =
+            dayData.qty1 !== undefined && dayData.qty1 !== ""
+              ? dayData.qty1
+              : d === 1 && item.qty1
+                ? item.qty1
+                : "";
+          const q2 =
+            dayData.qty2 !== undefined && dayData.qty2 !== ""
+              ? dayData.qty2
+              : d === 1 && item.qty2
+                ? item.qty2
+                : "";
+          const q3 =
+            dayData.qty3 !== undefined && dayData.qty3 !== ""
+              ? dayData.qty3
+              : d === 1 && item.qty3
+                ? item.qty3
+                : "";
+
+          const c1 = `<td class="cell-val">${q1}</td>`;
+          const c2 = u2Name
+            ? `<td class="cell-val">${q2}</td>`
+            : `<td class="cell-dash">-</td>`;
+          const c3 = u3Name
+            ? `<td class="cell-val">${q3}</td>`
+            : `<td class="cell-dash">-</td>`;
+          daysHtml += `${c1}${c2}${c3}`;
+        }
+
+        return `
+        <tr>
+          <td style="text-align: center; font-weight: bold; color: #475569;">${index + 1}</td>
+          <td style="font-weight: 600; color: #0f172a; font-size: 9px; padding: 2px 4px; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px;">
+            ${item.name || "-"}
+          </td>
+          ${daysHtml}
+          <td></td>
+        </tr>
+      `;
+      })
+      .join("");
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Formulir SO Mingguan (7 Hari) - ${whName}</title>
+          <style>
+            @page { size: landscape; margin: 6mm 5mm; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 2px; color: #0f172a; font-size: 9px; }
+            .header-box { border-bottom: 2px solid #0f172a; padding-bottom: 4px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: flex-end; }
+            h2 { margin: 0 0 2px 0; font-size: 13px; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 800; }
+            p { margin: 0; color: #475569; font-size: 9px; }
+            .meta-info { font-size: 9px; text-align: right; }
+            table { width: 100%; border-collapse: collapse; margin-top: 3px; table-layout: fixed; }
+            thead { display: table-header-group; }
+            tr { page-break-inside: avoid; }
+            th, td { border: 1px solid #94a3b8; padding: 2px 2px; vertical-align: middle; }
+            th { text-transform: uppercase; font-size: 8.5px; font-weight: 800; color: #1e293b; text-align: center; }
+            .day-header { background-color: #f1f5f9; border-bottom: 1.5px solid #64748b; }
+            .sub-th { font-size: 7.5px; font-weight: 700; background-color: #f8fafc; color: #475569; }
+            tr:nth-child(even) { background-color: #fbfcfd; }
+            .cell-val { text-align: center; font-size: 9px; font-family: monospace; font-weight: bold; height: 18px; }
+            .cell-dash { text-align: center; color: #cbd5e1; background: #f8fafc; font-weight: bold; }
+            .footer-sign { margin-top: 20px; display: flex; justify-content: space-between; font-size: 9px; page-break-inside: avoid; }
+            .sign-box { width: 180px; text-align: center; }
+            .line { border-bottom: 1px solid #0f172a; margin-top: 32px; }
+          </style>
+        </head>
+        <body>
+          <div class="header-box">
+            <div>
+              <h2>FORMULIR STOCK OPNAME MINGGUAN (LEMBAR HITUNG FISIK 7 HARI)</h2>
+              <p>Gudang: <strong>${whName}</strong> (${whCode}) | Tanggal Mulai: <strong>${opnameDateFormatted}</strong></p>
+            </div>
+            <div class="meta-info">
+              <p>Petugas: <strong>${manualSoAuditor || "...................."}</strong> | Total: <strong>${itemsToPrint.length} Produk</strong></p>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th rowspan="2" style="width: 24px;">No</th>
+                <th rowspan="2" style="text-align: left; width: 190px; padding-left: 4px;">Nama Produk</th>
+                ${sevenDays
+                  .map(
+                    (d) => `
+                  <th colspan="3" class="day-header" style="${
+                    d.dayIndex === 1
+                      ? "background-color: #e0f2fe; color: #0369a1;"
+                      : ""
+                  }">
+                    <div style="font-size: 8.5px; font-weight: 800;">${d.dayName}</div>
+                    <div style="font-size: 7px; font-weight: 600;">${d.dateMonth}</div>
+                  </th>
+                `,
+                  )
+                  .join("")}
+                <th rowspan="2" style="width: 35px;">Paraf</th>
+              </tr>
+              <tr>
+                ${sevenDays
+                  .map(
+                    () => `
+                  <th class="sub-th" style="width: 32px;">S1</th>
+                  <th class="sub-th" style="width: 32px;">S2</th>
+                  <th class="sub-th" style="width: 32px;">S3</th>
+                `,
+                  )
+                  .join("")}
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+          <div class="footer-sign">
+            <div class="sign-box">
+              <p>Petugas Penghitung Lapangan</p>
+              <div class="line"></div>
+              <p style="margin-top: 3px; color: #64748b;">( ${manualSoAuditor || "Tanda Tangan & Nama"} )</p>
+            </div>
+            <div class="sign-box">
+              <p>Petugas Verifikasi / Checker</p>
+              <div class="line"></div>
+              <p style="margin-top: 3px; color: #64748b;">( Tanda Tangan & Nama )</p>
+            </div>
+            <div class="sign-box">
+              <p>Kepala Gudang / Supervisor</p>
+              <div class="line"></div>
+              <p style="margin-top: 3px; color: #64748b;">( Tanda Tangan & Nama )</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+  };
+
   const handleDownloadExcelManualSo = () => {
     toast.info("Menyiapkan data unduhan Excel Form SO Manual...");
     const wh =
@@ -1378,29 +2135,430 @@ const StockOpname = () => {
     toast.success("File Form SO Manual Excel berhasil diunduh!");
   };
 
+  const handleDownloadExcelWeeklyManualSo = () => {
+    toast.info("Menyiapkan data unduhan Excel Form SO Mingguan (7 Hari)...");
+    const wh =
+      warehouses.find(
+        (w) => parseInt(w.id) === parseInt(manualSoWarehouseId),
+      ) || {};
+    const safeDate = manualSoDate || new Date().toISOString().split("T")[0];
+    const sevenDays = getSevenDaysList(safeDate);
+
+    const aoa = [
+      ["FORMULIR STOCK OPNAME MINGGUAN (7 HARI - 3 TANGGA SATUAN)"],
+      [
+        `Gudang: ${wh.name || "Gudang"} | Tanggal Mulai: ${safeDate} | Auditor: ${manualSoAuditor || "Petugas Lapangan"}`,
+      ],
+      [],
+      [
+        "No",
+        "Nama Produk",
+        "SKU Produk",
+        "Satuan 1 (Terbesar)",
+        "Satuan 2 (Menengah)",
+        "Satuan 3 (Terkecil)",
+        ...sevenDays.flatMap((d) => [d.fullHeader, "", ""]),
+        "Catatan Lapangan",
+      ],
+      [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "S1",
+        "S2",
+        "S3",
+        "S1",
+        "S2",
+        "S3",
+        "S1",
+        "S2",
+        "S3",
+        "S1",
+        "S2",
+        "S3",
+        "S1",
+        "S2",
+        "S3",
+        "S1",
+        "S2",
+        "S3",
+        "S1",
+        "S2",
+        "S3",
+        "",
+      ],
+    ];
+
+    manualSoItems.forEach((item, idx) => {
+      const u1 = item.unit1?.name || item.unit || "-";
+      const u2 = item.unit2?.name || "-";
+      const u3 = item.unit3?.name || "-";
+
+      const row = [idx + 1, item.name || "-", item.sku || "-", u1, u2, u3];
+
+      for (let d = 1; d <= 7; d++) {
+        const dayData = item.weekly?.[`d${d}`] || {};
+        const q1 =
+          dayData.qty1 !== undefined && dayData.qty1 !== ""
+            ? dayData.qty1
+            : d === 1 && item.qty1
+              ? item.qty1
+              : "";
+        const q2 =
+          u2 !== "-"
+            ? dayData.qty2 !== undefined && dayData.qty2 !== ""
+              ? dayData.qty2
+              : d === 1 && item.qty2
+                ? item.qty2
+                : ""
+            : "-";
+        const q3 =
+          u3 !== "-"
+            ? dayData.qty3 !== undefined && dayData.qty3 !== ""
+              ? dayData.qty3
+              : d === 1 && item.qty3
+                ? item.qty3
+                : ""
+            : "-";
+        row.push(q1, q2, q3);
+      }
+
+      row.push(item.notes || "");
+      aoa.push(row);
+    });
+
+    const worksheet = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Set merges (0-indexed)
+    worksheet["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 27 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 27 } },
+      // Headers vertical merge
+      { s: { r: 3, c: 0 }, e: { r: 4, c: 0 } },
+      { s: { r: 3, c: 1 }, e: { r: 4, c: 1 } },
+      { s: { r: 3, c: 2 }, e: { r: 4, c: 2 } },
+      { s: { r: 3, c: 3 }, e: { r: 4, c: 3 } },
+      { s: { r: 3, c: 4 }, e: { r: 4, c: 4 } },
+      { s: { r: 3, c: 5 }, e: { r: 4, c: 5 } },
+      // Days horizontal merge (3 cols each)
+      { s: { r: 3, c: 6 }, e: { r: 3, c: 8 } },
+      { s: { r: 3, c: 9 }, e: { r: 3, c: 11 } },
+      { s: { r: 3, c: 12 }, e: { r: 3, c: 14 } },
+      { s: { r: 3, c: 15 }, e: { r: 3, c: 17 } },
+      { s: { r: 3, c: 18 }, e: { r: 3, c: 20 } },
+      { s: { r: 3, c: 21 }, e: { r: 3, c: 23 } },
+      { s: { r: 3, c: 24 }, e: { r: 3, c: 26 } },
+      // Catatan vertical merge
+      { s: { r: 3, c: 27 }, e: { r: 4, c: 27 } },
+    ];
+
+    worksheet["!cols"] = [
+      { wch: 5 }, // No
+      { wch: 36 }, // Nama Produk
+      { wch: 16 }, // SKU
+      { wch: 12 }, // Satuan 1
+      { wch: 12 }, // Satuan 2
+      { wch: 12 }, // Satuan 3
+      // 7 days x 3 cols:
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 25 }, // Catatan
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "SO Mingguan (7 Hari)");
+    XLSX.writeFile(
+      workbook,
+      `Form_SO_Mingguan_${wh.name || "Gudang"}_${safeDate}.xlsx`,
+    );
+    toast.success("File Form SO Mingguan Excel (7 Hari) berhasil diunduh!");
+  };
+
+  const handleImportExcelManualSo = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+
+        const rowsAoa = XLSX.utils.sheet_to_json(worksheet, {
+          header: 1,
+          defval: "",
+        });
+        const isWeeklySheet = rowsAoa.some(
+          (r) =>
+            Array.isArray(r) &&
+            r.some(
+              (c) =>
+                typeof c === "string" && c.toUpperCase().includes("HARI KE-1"),
+            ),
+        );
+
+        let updatedCount = 0;
+
+        if (isWeeklySheet) {
+          const headerRowIdx = rowsAoa.findIndex(
+            (r) =>
+              Array.isArray(r) &&
+              r.some(
+                (c) =>
+                  typeof c === "string" &&
+                  c.toUpperCase().includes("HARI KE-1"),
+              ),
+          );
+          const dataRows = rowsAoa.slice(headerRowIdx + 2);
+
+          setManualSoItems((prev) => {
+            const newItems = [...prev];
+            dataRows.forEach((row) => {
+              if (!row || row.length < 3) return;
+              const nameVal = (row[1] || "").toString().trim().toLowerCase();
+              const skuVal = (row[2] || "").toString().trim().toUpperCase();
+
+              const idx = newItems.findIndex((it) => {
+                const itSku = (it.sku || "").toString().trim().toUpperCase();
+                if (skuVal && skuVal !== "-" && itSku === skuVal) return true;
+                const itName = (it.name || "").toString().trim().toLowerCase();
+                return itName && nameVal && itName === nameVal;
+              });
+
+              if (idx !== -1) {
+                const weeklyObj = {
+                  ...(newItems[idx].weekly || initWeeklyData()),
+                };
+                let hasAnyVal = false;
+                for (let d = 1; d <= 7; d++) {
+                  const baseCol = 6 + (d - 1) * 3;
+                  const q1 =
+                    row[baseCol] !== undefined &&
+                    row[baseCol] !== "" &&
+                    row[baseCol] !== "-"
+                      ? row[baseCol]
+                      : "";
+                  const q2 =
+                    row[baseCol + 1] !== undefined &&
+                    row[baseCol + 1] !== "" &&
+                    row[baseCol + 1] !== "-"
+                      ? row[baseCol + 1]
+                      : "";
+                  const q3 =
+                    row[baseCol + 2] !== undefined &&
+                    row[baseCol + 2] !== "" &&
+                    row[baseCol + 2] !== "-"
+                      ? row[baseCol + 2]
+                      : "";
+
+                  weeklyObj[`d${d}`] = { qty1: q1, qty2: q2, qty3: q3 };
+                  if (q1 !== "" || q2 !== "" || q3 !== "") hasAnyVal = true;
+                }
+
+                const notesVal = row[27] || newItems[idx].notes;
+                if (hasAnyVal || notesVal) {
+                  const targetDayKey = `d${manualSoActiveDay || 1}`;
+                  const activeData = weeklyObj[targetDayKey] || {};
+
+                  newItems[idx] = {
+                    ...newItems[idx],
+                    weekly: weeklyObj,
+                    qty1: activeData.qty1 ?? newItems[idx].qty1,
+                    qty2: activeData.qty2 ?? newItems[idx].qty2,
+                    qty3: activeData.qty3 ?? newItems[idx].qty3,
+                    notes: notesVal || newItems[idx].notes,
+                  };
+                  updatedCount++;
+                }
+              }
+            });
+            return newItems;
+          });
+        } else {
+          const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+          if (!json || json.length === 0) {
+            toast.error("File Excel kosong atau tidak dapat dibaca.");
+            return;
+          }
+
+          setManualSoItems((prev) => {
+            const newItems = [...prev];
+            json.forEach((row) => {
+              const skuVal = (row["SKU Produk"] || row["SKU"] || "")
+                .toString()
+                .trim()
+                .toUpperCase();
+              const nameVal = (
+                row["Nama Produk"] ||
+                row["Produk"] ||
+                row["Nama"] ||
+                ""
+              )
+                .toString()
+                .trim()
+                .toLowerCase();
+
+              const idx = newItems.findIndex((it) => {
+                const itSku = (it.sku || "").toString().trim().toUpperCase();
+                if (skuVal && skuVal !== "-" && itSku === skuVal) return true;
+                const itName = (it.name || "").toString().trim().toLowerCase();
+                return itName && nameVal && itName === nameVal;
+              });
+
+              if (idx !== -1) {
+                const q1 =
+                  row["Fisik Satuan 1"] !== undefined &&
+                  row["Fisik Satuan 1"] !== ""
+                    ? row["Fisik Satuan 1"]
+                    : row["Qty 1"] !== undefined
+                      ? row["Qty 1"]
+                      : "";
+                const q2 =
+                  row["Fisik Satuan 2"] !== undefined &&
+                  row["Fisik Satuan 2"] !== ""
+                    ? row["Fisik Satuan 2"]
+                    : row["Qty 2"] !== undefined
+                      ? row["Qty 2"]
+                      : "";
+                const q3 =
+                  row["Fisik Satuan 3"] !== undefined &&
+                  row["Fisik Satuan 3"] !== ""
+                    ? row["Fisik Satuan 3"]
+                    : row["Qty 3"] !== undefined
+                      ? row["Qty 3"]
+                      : "";
+                const notes =
+                  row["Catatan / Paraf Lapangan"] ||
+                  row["Catatan"] ||
+                  row["Notes"] ||
+                  "";
+
+                if (q1 !== "" || q2 !== "" || q3 !== "" || notes !== "") {
+                  const cleanedQ1 = q1 !== "" && q1 !== "-" ? q1 : "";
+                  const cleanedQ2 = q2 !== "" && q2 !== "-" ? q2 : "";
+                  const cleanedQ3 = q3 !== "" && q3 !== "-" ? q3 : "";
+
+                  const weeklyObj = {
+                    ...(newItems[idx].weekly || initWeeklyData()),
+                  };
+                  const targetDayKey = `d${manualSoActiveDay || 1}`;
+                  weeklyObj[targetDayKey] = {
+                    qty1: cleanedQ1,
+                    qty2: cleanedQ2,
+                    qty3: cleanedQ3,
+                  };
+
+                  newItems[idx] = {
+                    ...newItems[idx],
+                    qty1: cleanedQ1,
+                    qty2: cleanedQ2,
+                    qty3: cleanedQ3,
+                    notes: notes || newItems[idx].notes,
+                    weekly: weeklyObj,
+                  };
+                  updatedCount++;
+                }
+              }
+            });
+            return newItems;
+          });
+        }
+
+        if (updatedCount > 0) {
+          toast.success(
+            `Berhasil mengimpor kuantitas fisik untuk ${updatedCount} produk!`,
+          );
+        } else {
+          toast.warning(
+            "Tidak ada produk yang cocok dengan SKU/Nama atau kolom fisik masih kosong.",
+          );
+        }
+      } catch (err) {
+        console.error("Error reading Excel:", err);
+        toast.error(
+          "Gagal membaca file Excel. Pastikan format sesuai template.",
+        );
+      } finally {
+        e.target.value = "";
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
   const handleConvertManualSoToDraft = async () => {
-    const hasAnyInput = manualSoItems.some(
-      (it) =>
+    const isWeekly = manualSoFormatMode === "weekly";
+    const activeDayKey = `d${manualSoActiveDay}`;
+
+    const hasAnyInput = manualSoItems.some((it) => {
+      if (isWeekly) {
+        const d = it.weekly?.[activeDayKey] || {};
+        return (
+          (d.qty1 !== "" && d.qty1 !== null && d.qty1 !== undefined) ||
+          (d.qty2 !== "" && d.qty2 !== null && d.qty2 !== undefined) ||
+          (d.qty3 !== "" && d.qty3 !== null && d.qty3 !== undefined)
+        );
+      }
+      return (
         (it.qty1 !== "" && it.qty1 !== null && it.qty1 !== undefined) ||
         (it.qty2 !== "" && it.qty2 !== null && it.qty2 !== undefined) ||
-        (it.qty3 !== "" && it.qty3 !== null && it.qty3 !== undefined),
-    );
+        (it.qty3 !== "" && it.qty3 !== null && it.qty3 !== undefined)
+      );
+    });
 
     if (!hasAnyInput) {
-      toast.error("Belum ada data kuantitas fisik yang diinput.");
+      toast.error(
+        isWeekly
+          ? `Belum ada data kuantitas fisik yang diinput untuk Hari ke-${manualSoActiveDay}.`
+          : "Belum ada data kuantitas fisik yang diinput.",
+      );
       return;
     }
 
     try {
       setSaveLoading(true);
       const itemsPayload = manualSoItems.map((it) => {
+        let q1 = it.qty1;
+        let q2 = it.qty2;
+        let q3 = it.qty3;
+
+        if (isWeekly) {
+          const d = it.weekly?.[activeDayKey] || {};
+          q1 = d.qty1;
+          q2 = d.qty2;
+          q3 = d.qty3;
+        }
+
         const hasInput =
-          (it.qty1 !== "" && it.qty1 !== null && it.qty1 !== undefined) ||
-          (it.qty2 !== "" && it.qty2 !== null && it.qty2 !== undefined) ||
-          (it.qty3 !== "" && it.qty3 !== null && it.qty3 !== undefined);
+          (q1 !== "" && q1 !== null && q1 !== undefined) ||
+          (q2 !== "" && q2 !== null && q2 !== undefined) ||
+          (q3 !== "" && q3 !== null && q3 !== undefined);
 
         const actualQty = hasInput
-          ? calculateThreeTierBaseQty(it.qty1, it.qty2, it.qty3, {
+          ? calculateThreeTierBaseQty(q1, q2, q3, {
               unit1: it.unit1,
               unit2: it.unit2,
               unit3: it.unit3,
@@ -1412,12 +2570,15 @@ const StockOpname = () => {
           actualQty,
           notes: it.notes || "",
           metadata: {
-            qty1: it.qty1 || 0,
-            unit1: it.unit1?.name || item.unit,
-            qty2: it.qty2 || 0,
+            qty1: q1 || 0,
+            unit1: it.unit1?.name || it.unit,
+            qty2: q2 || 0,
             unit2: it.unit2?.name || "",
-            qty3: it.qty3 || 0,
+            qty3: q3 || 0,
             unit3: it.unit3?.name || "",
+            mode: isWeekly
+              ? `Mingguan (Hari ke-${manualSoActiveDay})`
+              : "Harian",
           },
         };
       });
@@ -1425,14 +2586,16 @@ const StockOpname = () => {
       const payload = {
         warehouseId: parseInt(manualSoWarehouseId),
         opnameDate: manualSoDate,
-        notes: `[REGULAR] SO Manual Lapangan (${manualSoDate}) - Auditor: ${manualSoAuditor || user?.name || "Petugas"}`,
+        notes: isWeekly
+          ? `[REGULAR] SO Manual Lapangan (Mingguan - Hari ke-${manualSoActiveDay}, ${manualSoDate}) - Auditor: ${manualSoAuditor || user?.name || "Petugas"}`
+          : `[REGULAR] SO Manual Lapangan (${manualSoDate}) - Auditor: ${manualSoAuditor || user?.name || "Petugas"}`,
         items: itemsPayload,
       };
 
       const res = await api.post("/stock-opnames", payload);
       toast.success(
         res.data?.message ||
-          "Draft Stock Opname berhasil dibuat dari Form Manual!",
+          `Draft Stock Opname berhasil dibuat dari Form Manual (${isWeekly ? `Hari ke-${manualSoActiveDay}` : "Harian"})!`,
       );
       setManualSoModalOpen(false);
       fetchActiveData();
@@ -2168,78 +3331,105 @@ const StockOpname = () => {
                                 )}
                               </div>
 
-                              {/* Multi-Unit Inputs */}
+                              {/* Multi-Unit Inputs (Up to 3 Tiers) */}
                               <div className="flex items-center gap-2">
-                                {/* Input Satuan Besar */}
-                                <div className="w-24">
+                                {/* Satuan 1 (Terbesar) */}
+                                <div className="w-20 sm:w-24">
                                   <span
                                     className="text-[10px] font-bold text-zinc-600 uppercase tracking-wider block mb-0.5 truncate"
-                                    title={item.structure?.bigUnitName}
+                                    title={
+                                      item.tiers?.unit1?.name ||
+                                      item.structure?.bigUnitName
+                                    }
                                   >
-                                    {item.structure?.hasMultiUnit
-                                      ? `${item.structure.bigUnitName} (Utuh)`
-                                      : item.structure?.bigUnitName}
+                                    {item.tiers?.unit1?.name ||
+                                      item.structure?.bigUnitName}
+                                    {item.tiers?.unit2 || item.tiers?.unit3
+                                      ? " (Besar)"
+                                      : ""}
                                   </span>
                                   <input
                                     type="number"
                                     min="0"
-                                    step={
-                                      item.structure?.hasMultiUnit
-                                        ? "1"
-                                        : "0.01"
-                                    }
                                     placeholder="0"
                                     value={
                                       opnameType === "EXPIRED"
                                         ? (item.expiredBesar ?? "")
-                                        : (item.besarInput ?? "")
+                                        : (item.qty1 ?? "")
                                     }
                                     onChange={(e) =>
                                       handleMultiUnitQtyChange(
                                         originalIndex,
-                                        "besar",
+                                        "qty1",
                                         e.target.value,
                                       )
                                     }
                                     onFocus={(e) => e.target.select()}
                                     className="w-full px-2 py-1.5 text-center bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-black font-mono text-zinc-950 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 outline-none"
-                                    title={`Jumlah fisik dalam ${item.structure?.bigUnitName}`}
+                                    title={`Jumlah fisik dalam ${item.tiers?.unit1?.name || item.structure?.bigUnitName}`}
                                   />
                                 </div>
 
-                                {/* Input Satuan Kecil / Ecer (jika multi-satuan) */}
-                                {item.structure?.hasMultiUnit && (
-                                  <div className="w-24">
+                                {/* Satuan 2 (Menengah / Sedang) - Jika Ada */}
+                                {item.tiers?.unit2 && (
+                                  <div className="w-20 sm:w-24">
                                     <span
                                       className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block mb-0.5 truncate"
-                                      title={item.structure.smallUnitName}
+                                      title={item.tiers.unit2.name}
                                     >
-                                      {item.structure.smallUnitName} (Ecer)
+                                      {item.tiers.unit2.name} (Sedang)
                                     </span>
                                     <input
                                       type="number"
                                       min="0"
-                                      max={
-                                        item.structure.capacity
-                                          ? item.structure.capacity - 1
-                                          : undefined
-                                      }
                                       placeholder="0"
                                       value={
                                         opnameType === "EXPIRED"
-                                          ? (item.expiredKecil ?? "")
-                                          : (item.kecilInput ?? "")
+                                          ? (item.expiredSedang ?? "")
+                                          : (item.qty2 ?? "")
                                       }
                                       onChange={(e) =>
                                         handleMultiUnitQtyChange(
                                           originalIndex,
-                                          "kecil",
+                                          "qty2",
                                           e.target.value,
                                         )
                                       }
                                       onFocus={(e) => e.target.select()}
                                       className="w-full px-2 py-1.5 text-center bg-emerald-50/60 border border-emerald-300 rounded-lg text-xs font-black font-mono text-emerald-950 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
-                                      title={`Jumlah eceran/sisa dalam ${item.structure.smallUnitName}`}
+                                      title={`Jumlah fisik dalam ${item.tiers.unit2.name}`}
+                                    />
+                                  </div>
+                                )}
+
+                                {/* Satuan 3 (Terkecil) - Jika Ada */}
+                                {item.tiers?.unit3 && (
+                                  <div className="w-20 sm:w-24">
+                                    <span
+                                      className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block mb-0.5 truncate"
+                                      title={item.tiers.unit3.name}
+                                    >
+                                      {item.tiers.unit3.name} (Kecil)
+                                    </span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      placeholder="0"
+                                      value={
+                                        opnameType === "EXPIRED"
+                                          ? (item.expiredKecil ?? "")
+                                          : (item.qty3 ?? "")
+                                      }
+                                      onChange={(e) =>
+                                        handleMultiUnitQtyChange(
+                                          originalIndex,
+                                          "qty3",
+                                          e.target.value,
+                                        )
+                                      }
+                                      onFocus={(e) => e.target.select()}
+                                      className="w-full px-2 py-1.5 text-center bg-amber-50/60 border border-amber-300 rounded-lg text-xs font-black font-mono text-amber-950 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-600 outline-none"
+                                      title={`Jumlah fisik dalam ${item.tiers.unit3.name}`}
                                     />
                                   </div>
                                 )}
@@ -2260,6 +3450,7 @@ const StockOpname = () => {
                                       item.actualQty,
                                       item.systemQty,
                                       item.structure,
+                                      item.tiers,
                                     );
                                     if (diffInfo.type === "match") {
                                       return (
@@ -2354,7 +3545,7 @@ const StockOpname = () => {
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-7xl w-full max-h-[94vh] flex flex-col shadow-2xl border border-zinc-200 overflow-hidden">
             {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between shrink-0 bg-linear-to-r from-emerald-50/50 via-white to-zinc-50/50">
+            <div className="px-6 py-4 border-b border-zinc-100 flex flex-wrap items-center justify-between gap-3 shrink-0 bg-linear-to-r from-emerald-50/50 via-white to-zinc-50/50">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/20 shrink-0">
                   <FileSpreadsheet size={20} />
@@ -2369,22 +3560,64 @@ const StockOpname = () => {
                     </span>
                   </div>
                   <p className="text-xs text-zinc-500 mt-0.5">
-                    Format:{" "}
-                    <strong>
-                      Nama Produk | SKU Produk | Tangga Stok Satuan (Terbesar
-                      &rarr; Menengah &rarr; Terkecil)
-                    </strong>
+                    {manualSoFormatMode === "weekly" ? (
+                      <span>
+                        Format Mingguan:{" "}
+                        <strong>
+                          Nama Produk | Hari ke-1 s/d Hari ke-7 (Tiap hari
+                          tersedia 3 sub-kolom satuan)
+                        </strong>
+                      </span>
+                    ) : (
+                      <span>
+                        Format Harian:{" "}
+                        <strong>
+                          Nama Produk | Tangga Satuan (Terbesar &rarr; Menengah
+                          &rarr; Terkecil)
+                        </strong>
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setManualSoModalOpen(false)}
-                className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-xl transition-all cursor-pointer"
-              >
-                <X size={18} />
-              </button>
+              {/* View Mode Toggle: Harian vs Mingguan */}
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center bg-zinc-200/80 p-0.5 rounded-xl border border-zinc-300/60 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => setManualSoFormatMode("daily")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                      manualSoFormatMode === "daily"
+                        ? "bg-white text-zinc-900 shadow-xs"
+                        : "text-zinc-600 hover:text-zinc-900"
+                    }`}
+                  >
+                    <Calendar size={13} />
+                    <span>Format Harian (1 Hari)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setManualSoFormatMode("weekly")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                      manualSoFormatMode === "weekly"
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "text-zinc-600 hover:text-zinc-900"
+                    }`}
+                  >
+                    <CalendarDays size={13} />
+                    <span>Format Mingguan (7 Hari)</span>
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setManualSoModalOpen(false)}
+                  className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-xl transition-all cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             {/* Config & Filter Bar */}
@@ -2416,7 +3649,9 @@ const StockOpname = () => {
                 {/* Tanggal SO */}
                 <div className="flex items-center space-x-2">
                   <span className="text-xs font-bold text-zinc-600">
-                    Tanggal SO:
+                    {manualSoFormatMode === "weekly"
+                      ? "Tanggal Mulai:"
+                      : "Tanggal SO:"}
                   </span>
                   <input
                     type="date"
@@ -2439,6 +3674,33 @@ const StockOpname = () => {
                     className="text-xs px-2.5 py-1.5 bg-white border border-zinc-200 rounded-xl shadow-2xs placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 w-44"
                   />
                 </div>
+
+                {/* If Weekly mode, show Day selector pills */}
+                {manualSoFormatMode === "weekly" && (
+                  <div className="flex items-center space-x-1.5 bg-emerald-50/80 border border-emerald-200 px-3 py-1 rounded-xl">
+                    <span className="text-xs font-bold text-emerald-900 mr-1">
+                      Hari Aktif SO:
+                    </span>
+                    {getSevenDaysList(manualSoDate).map((d) => (
+                      <button
+                        key={d.dayIndex}
+                        type="button"
+                        onClick={() => setManualSoActiveDay(d.dayIndex)}
+                        className={`px-2 py-0.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                          manualSoActiveDay === d.dayIndex
+                            ? "bg-emerald-600 text-white shadow-2xs scale-105"
+                            : "bg-white text-zinc-700 hover:bg-emerald-100 border border-emerald-200"
+                        }`}
+                        title={`Pilih ${d.dayName} (${d.dateMonth}) untuk disimpan ke Draft SO`}
+                      >
+                        {d.dayName}{" "}
+                        <span className="font-normal opacity-80 text-[10px]">
+                          ({d.dateMonth})
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Search & Ref Toggle */}
@@ -2457,20 +3719,22 @@ const StockOpname = () => {
                   />
                 </div>
 
-                <label className="flex items-center space-x-2 text-xs font-bold text-zinc-600 cursor-pointer select-none shrink-0 bg-white px-3 py-1.5 rounded-xl border border-zinc-200 shadow-2xs hover:bg-zinc-50 transition-all">
-                  <input
-                    type="checkbox"
-                    checked={showSystemRef}
-                    onChange={(e) => setShowSystemRef(e.target.checked)}
-                    className="rounded text-emerald-600 focus:ring-emerald-500/20 cursor-pointer"
-                  />
-                  <span>Tampilkan Stok Sistem</span>
-                </label>
+                {manualSoFormatMode === "daily" && (
+                  <label className="flex items-center space-x-2 text-xs font-bold text-zinc-600 cursor-pointer select-none shrink-0 bg-white px-3 py-1.5 rounded-xl border border-zinc-200 shadow-2xs hover:bg-zinc-50 transition-all">
+                    <input
+                      type="checkbox"
+                      checked={showSystemRef}
+                      onChange={(e) => setShowSystemRef(e.target.checked)}
+                      className="rounded text-emerald-600 focus:ring-emerald-500/20 cursor-pointer"
+                    />
+                    <span>Tampilkan Stok Sistem</span>
+                  </label>
+                )}
               </div>
             </div>
 
             {/* Summary Indicator bar */}
-            <div className="px-6 py-2.5 bg-white border-b border-zinc-100 flex items-center justify-between text-xs shrink-0">
+            <div className="px-6 py-2.5 bg-white border-b border-zinc-100 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
               <div className="flex items-center space-x-2">
                 <span className="px-2.5 py-1 rounded-lg bg-zinc-100 text-zinc-700 font-bold border border-zinc-200">
                   Total Produk:{" "}
@@ -2479,37 +3743,127 @@ const StockOpname = () => {
                   </span>
                 </span>
                 <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-bold border border-emerald-200">
-                  Telah Diisi:{" "}
+                  {manualSoFormatMode === "weekly"
+                    ? `Diisi di ${getSevenDaysList(manualSoDate).find((d) => d.dayIndex === manualSoActiveDay)?.dayName || `Hari ${manualSoActiveDay}`}: `
+                    : "Telah Diisi: "}
                   <span className="font-mono font-extrabold">
-                    {
-                      manualSoItems.filter(
-                        (i) => i.qty1 !== "" || i.qty2 !== "" || i.qty3 !== "",
-                      ).length
-                    }
+                    {manualSoFormatMode === "weekly"
+                      ? manualSoItems.filter((i) => {
+                          const d = i.weekly?.[`d${manualSoActiveDay}`] || {};
+                          return (
+                            (d.qty1 !== "" &&
+                              d.qty1 !== null &&
+                              d.qty1 !== undefined) ||
+                            (d.qty2 !== "" &&
+                              d.qty2 !== null &&
+                              d.qty2 !== undefined) ||
+                            (d.qty3 !== "" &&
+                              d.qty3 !== null &&
+                              d.qty3 !== undefined)
+                          );
+                        }).length
+                      : manualSoItems.filter(
+                          (i) =>
+                            i.qty1 !== "" || i.qty2 !== "" || i.qty3 !== "",
+                        ).length}
                   </span>
                 </span>
               </div>
 
               <div className="flex items-center space-x-2">
-                <button
-                  type="button"
-                  onClick={handleDownloadExcelManualSo}
-                  className="px-3 py-1.5 bg-white border border-zinc-200 hover:border-emerald-300 text-zinc-700 hover:text-emerald-700 rounded-xl text-xs font-bold shadow-2xs hover:bg-emerald-50/50 flex items-center space-x-1.5 cursor-pointer transition-all"
-                  title="Unduh Excel Form SO Manual (3 Kolom Satuan)"
-                >
-                  <FileSpreadsheet size={14} className="text-emerald-600" />
-                  <span>Download Excel (.xlsx)</span>
-                </button>
+                {manualSoFormatMode === "weekly" ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleDownloadExcelWeeklyManualSo}
+                      className="px-3 py-1.5 bg-white border border-zinc-200 hover:border-emerald-300 text-zinc-700 hover:text-emerald-700 rounded-xl text-xs font-bold shadow-2xs hover:bg-emerald-50/50 flex items-center space-x-1.5 cursor-pointer transition-all"
+                      title="Unduh Excel Form SO Mingguan (7 Hari x 3 Kolom Satuan)"
+                    >
+                      <FileSpreadsheet size={14} className="text-emerald-600" />
+                      <span>Excel (.xlsx)</span>
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={handlePrintManualSoForm}
-                  className="px-3 py-1.5 bg-white border border-zinc-200 hover:border-indigo-300 text-zinc-700 hover:text-indigo-700 rounded-xl text-xs font-bold shadow-2xs hover:bg-indigo-50/50 flex items-center space-x-1.5 cursor-pointer transition-all"
-                  title="Cetak Formulir SO Manual Untuk Lembar Hitung Lapangan"
-                >
-                  <Printer size={14} className="text-indigo-600" />
-                  <span>Cetak Lembar Hitung (Print)</span>
-                </button>
+                    <button
+                      type="button"
+                      onClick={handleDownloadWordWeeklyPortraitManualSo}
+                      className="px-3 py-1.5 bg-white border border-zinc-200 hover:border-blue-300 text-zinc-700 hover:text-blue-700 rounded-xl text-xs font-bold shadow-2xs hover:bg-blue-50/50 flex items-center space-x-1.5 cursor-pointer transition-all"
+                      title="Unduh Formulir SO Mingguan Format Word (.doc Layout Portrait)"
+                    >
+                      <FileText size={14} className="text-blue-600" />
+                      <span>Word Portrait (.doc)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handlePrintWeeklyPortraitManualSoForm}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-2xs flex items-center space-x-1.5 cursor-pointer transition-all"
+                      title="Cetak / Simpan PDF Formulir SO Mingguan Layout Portrait (A4)"
+                    >
+                      <Printer size={14} />
+                      <span>Cetak / PDF (Portrait)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handlePrintWeeklyManualSoForm}
+                      className="px-2.5 py-1.5 bg-white border border-zinc-200 hover:border-zinc-300 text-zinc-600 hover:text-zinc-800 rounded-xl text-xs font-bold shadow-2xs hover:bg-zinc-50 flex items-center space-x-1 cursor-pointer transition-all"
+                      title="Cetak Formulir SO Mingguan Layout Landscape"
+                    >
+                      <Printer size={13} className="text-zinc-400" />
+                      <span>Landscape</span>
+                    </button>
+
+                    <label
+                      className="px-3 py-1.5 bg-white border border-zinc-200 hover:border-zinc-300 text-zinc-700 rounded-xl text-xs font-bold shadow-2xs hover:bg-zinc-50 flex items-center space-x-1.5 cursor-pointer transition-all"
+                      title="Import Excel Formulir Mingguan / Harian (.xlsx / .xls / .csv)"
+                    >
+                      <Upload size={14} className="text-zinc-600" />
+                      <span>Import Excel</span>
+                      <input
+                        type="file"
+                        accept=".xlsx, .xls, .csv"
+                        className="hidden"
+                        onChange={handleImportExcelManualSo}
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleDownloadExcelManualSo}
+                      className="px-3 py-1.5 bg-white border border-zinc-200 hover:border-emerald-300 text-zinc-700 hover:text-emerald-700 rounded-xl text-xs font-bold shadow-2xs hover:bg-emerald-50/50 flex items-center space-x-1.5 cursor-pointer transition-all"
+                      title="Unduh Excel Form SO Manual (3 Kolom Satuan)"
+                    >
+                      <FileSpreadsheet size={14} className="text-emerald-600" />
+                      <span>Download Excel (.xlsx)</span>
+                    </button>
+
+                    <label
+                      className="px-3 py-1.5 bg-white border border-zinc-200 hover:border-blue-300 text-zinc-700 hover:text-blue-700 rounded-xl text-xs font-bold shadow-2xs hover:bg-blue-50/50 flex items-center space-x-1.5 cursor-pointer transition-all"
+                      title="Import Excel Formulir Hitung Lapangan (.xlsx / .xls / .csv)"
+                    >
+                      <Upload size={14} className="text-blue-600" />
+                      <span>Import Excel</span>
+                      <input
+                        type="file"
+                        accept=".xlsx, .xls, .csv"
+                        className="hidden"
+                        onChange={handleImportExcelManualSo}
+                      />
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={handlePrintManualSoForm}
+                      className="px-3 py-1.5 bg-white border border-zinc-200 hover:border-indigo-300 text-zinc-700 hover:text-indigo-700 rounded-xl text-xs font-bold shadow-2xs hover:bg-indigo-50/50 flex items-center space-x-1.5 cursor-pointer transition-all"
+                      title="Cetak Formulir SO Manual Untuk Lembar Hitung Lapangan"
+                    >
+                      <Printer size={14} className="text-indigo-600" />
+                      <span>Cetak Lembar Hitung (Print)</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -2522,7 +3876,218 @@ const StockOpname = () => {
                     Memuat data produk dan tangga satuan...
                   </p>
                 </div>
+              ) : manualSoFormatMode === "weekly" ? (
+                /* WEEKLY FORMAT (7 Hari x 3 Sub-kolom) */
+                <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto max-w-full">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        {/* Tier 1 Header */}
+                        <tr className="bg-zinc-100/90 text-zinc-700 uppercase tracking-wider font-extrabold text-[11px] border-b border-zinc-200">
+                          <th
+                            rowSpan={2}
+                            className="py-2.5 px-3 text-center w-12 sticky left-0 z-20 bg-zinc-100 border-r border-zinc-200 shadow-2xs"
+                          >
+                            No
+                          </th>
+                          <th
+                            rowSpan={2}
+                            className="py-2.5 px-3 min-w-[200px] max-w-[250px] sticky left-12 z-20 bg-zinc-100 border-r border-zinc-200 shadow-2xs text-left"
+                          >
+                            Nama Produk
+                          </th>
+                          {getSevenDaysList(manualSoDate).map((d) => (
+                            <th
+                              key={d.dayIndex}
+                              colSpan={3}
+                              onClick={() => setManualSoActiveDay(d.dayIndex)}
+                              className={`py-2 px-1 text-center font-extrabold uppercase text-[11px] border-r border-b cursor-pointer transition-all select-none ${
+                                manualSoActiveDay === d.dayIndex
+                                  ? "bg-emerald-600 text-white shadow-xs"
+                                  : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200/90"
+                              }`}
+                              title={`Klik untuk memilih Hari ke-${d.dayIndex} (${d.fullHeader}) sebagai data aktif Draft SO`}
+                            >
+                              <div className="flex flex-col items-center justify-center">
+                                <div className="flex items-center space-x-1">
+                                  <span className="font-extrabold">
+                                    {d.dayName}
+                                  </span>
+                                  <span className="text-[9px] font-semibold opacity-85">
+                                    ({d.dateMonth})
+                                  </span>
+                                  {manualSoActiveDay === d.dayIndex && (
+                                    <span className="text-[9px] bg-white text-emerald-800 px-1 py-0.2 rounded font-black">
+                                      ★ Aktif
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </th>
+                          ))}
+                        </tr>
+
+                        {/* Tier 2 Header (S1, S2, S3 for each day) */}
+                        <tr className="bg-zinc-50 border-b border-zinc-200 text-[10px] uppercase font-bold text-zinc-600">
+                          {[1, 2, 3, 4, 5, 6, 7].flatMap((d) => [
+                            <th
+                              key={`h-${d}-s1`}
+                              className="py-1 px-1 text-center w-13 bg-sky-50/70 text-sky-900 border-r border-sky-100 font-extrabold"
+                              title="Satuan 1 (Terbesar)"
+                            >
+                              S1
+                            </th>,
+                            <th
+                              key={`h-${d}-s2`}
+                              className="py-1 px-1 text-center w-13 bg-emerald-50/70 text-emerald-900 border-r border-emerald-100 font-extrabold"
+                              title="Satuan 2 (Menengah)"
+                            >
+                              S2
+                            </th>,
+                            <th
+                              key={`h-${d}-s3`}
+                              className="py-1 px-1 text-center w-13 bg-amber-50/70 text-amber-900 border-r border-zinc-200 font-extrabold"
+                              title="Satuan 3 (Terkecil)"
+                            >
+                              S3
+                            </th>,
+                          ])}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {manualSoItems
+                          .filter((item) => {
+                            if (!manualSoSearch.trim()) return true;
+                            const q = manualSoSearch.toLowerCase().trim();
+                            return (
+                              item.name.toLowerCase().includes(q) ||
+                              item.sku.toLowerCase().includes(q) ||
+                              (item.categoryName &&
+                                item.categoryName.toLowerCase().includes(q))
+                            );
+                          })
+                          .map((item, index) => {
+                            const u1Name =
+                              item.unit1?.name || item.unit || "KRT";
+                            const u2Name = item.unit2?.name || null;
+                            const u3Name = item.unit3?.name || null;
+
+                            return (
+                              <tr
+                                key={item.productId}
+                                className="hover:bg-zinc-50/80 transition-colors"
+                              >
+                                <td className="py-1.5 px-3 text-center font-bold text-zinc-500 font-mono sticky left-0 z-10 bg-white border-r border-zinc-200">
+                                  {index + 1}
+                                </td>
+                                <td className="py-1.5 px-3 sticky left-12 z-10 bg-white border-r border-zinc-200 min-w-[200px] max-w-[250px]">
+                                  <p
+                                    className="font-bold text-zinc-900 leading-snug truncate text-xs"
+                                    title={item.name}
+                                  >
+                                    {item.name}
+                                  </p>
+                                </td>
+
+                                {/* 7 Days x 3 Sub-columns */}
+                                {[1, 2, 3, 4, 5, 6, 7].flatMap((d) => {
+                                  const dayKey = `d${d}`;
+                                  const dayData = item.weekly?.[dayKey] || {};
+                                  const isActiveCol = manualSoActiveDay === d;
+
+                                  return [
+                                    <td
+                                      key={`${item.productId}-d${d}-s1`}
+                                      className={`py-1 px-1 border-r border-zinc-100 text-center ${
+                                        isActiveCol ? "bg-emerald-50/20" : ""
+                                      }`}
+                                    >
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        placeholder="0"
+                                        value={dayData.qty1 ?? ""}
+                                        onChange={(e) =>
+                                          handleManualSoWeeklyChange(
+                                            item.productId,
+                                            dayKey,
+                                            "qty1",
+                                            e.target.value,
+                                          )
+                                        }
+                                        className="w-11 px-1 py-1 text-center font-mono font-bold text-xs bg-white border border-zinc-200 rounded focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 shadow-2xs"
+                                        title={`Hari ${d} - Satuan 1 (${u1Name})`}
+                                      />
+                                    </td>,
+                                    <td
+                                      key={`${item.productId}-d${d}-s2`}
+                                      className={`py-1 px-1 border-r border-zinc-100 text-center ${
+                                        isActiveCol ? "bg-emerald-50/20" : ""
+                                      }`}
+                                    >
+                                      {u2Name ? (
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          placeholder="0"
+                                          value={dayData.qty2 ?? ""}
+                                          onChange={(e) =>
+                                            handleManualSoWeeklyChange(
+                                              item.productId,
+                                              dayKey,
+                                              "qty2",
+                                              e.target.value,
+                                            )
+                                          }
+                                          className="w-11 px-1 py-1 text-center font-mono font-bold text-xs bg-white border border-zinc-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 shadow-2xs"
+                                          title={`Hari ${d} - Satuan 2 (${u2Name})`}
+                                        />
+                                      ) : (
+                                        <span className="text-zinc-300 font-bold">
+                                          -
+                                        </span>
+                                      )}
+                                    </td>,
+                                    <td
+                                      key={`${item.productId}-d${d}-s3`}
+                                      className={`py-1 px-1 border-r border-zinc-200 text-center ${
+                                        isActiveCol ? "bg-emerald-50/20" : ""
+                                      }`}
+                                    >
+                                      {u3Name ? (
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          placeholder="0"
+                                          value={dayData.qty3 ?? ""}
+                                          onChange={(e) =>
+                                            handleManualSoWeeklyChange(
+                                              item.productId,
+                                              dayKey,
+                                              "qty3",
+                                              e.target.value,
+                                            )
+                                          }
+                                          className="w-11 px-1 py-1 text-center font-mono font-bold text-xs bg-white border border-zinc-200 rounded focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 shadow-2xs"
+                                          title={`Hari ${d} - Satuan 3 (${u3Name})`}
+                                        />
+                                      ) : (
+                                        <span className="text-zinc-300 font-bold">
+                                          -
+                                        </span>
+                                      )}
+                                    </td>,
+                                  ];
+                                })}
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               ) : (
+                /* DAILY FORMAT (Standard 3 Tangga Satuan) */
                 <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
@@ -2725,7 +4290,11 @@ const StockOpname = () => {
                   ) : (
                     <Save size={15} />
                   )}
-                  <span>Simpan Hasil ke Draft Opname</span>
+                  <span>
+                    {manualSoFormatMode === "weekly"
+                      ? `Simpan Hasil Hari ke-${manualSoActiveDay} ke Draft Opname`
+                      : "Simpan Hasil ke Draft Opname"}
+                  </span>
                 </button>
               </div>
             </div>

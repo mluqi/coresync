@@ -465,7 +465,7 @@ export const calculateTieredItemSubtotal = (item, struct) => {
  * Format quantity display with multi-unit breakdown support
  * e.g. "1 KRT + 8 PCS" or falls back to formatStockBreakdownCompact
  */
-export const formatTieredQtyDisplay = (qty, metaItem, product) => {
+export const formatTieredQtyDisplay = (qty, metaItem, product, defaultUnit) => {
   if (metaItem && metaItem.bigUnit && (parseFloat(metaItem.bigQty || 0) > 0 || parseFloat(metaItem.smallQty || 0) > 0)) {
     const b = parseFloat(metaItem.bigQty || 0);
     const s = parseFloat(metaItem.smallQty || 0);
@@ -475,13 +475,16 @@ export const formatTieredQtyDisplay = (qty, metaItem, product) => {
     if (b > 0) return `${b} ${bUnit}`;
     if (s > 0) return `${s} ${sUnit}`;
   }
+  if (defaultUnit) {
+    return `${formatQty(qty)} ${defaultUnit.toUpperCase()}`;
+  }
   return formatStockBreakdownCompact(qty, product);
 };
 
 /**
  * Format bonus quantity display with multi-unit breakdown support
  */
-export const formatTieredBonusDisplay = (bonusQty, metaItem, product) => {
+export const formatTieredBonusDisplay = (bonusQty, metaItem, product, defaultUnit) => {
   if (metaItem && metaItem.bigUnit && (parseFloat(metaItem.bigBonusQty || 0) > 0 || parseFloat(metaItem.smallBonusQty || 0) > 0)) {
     const b = parseFloat(metaItem.bigBonusQty || 0);
     const s = parseFloat(metaItem.smallBonusQty || 0);
@@ -492,7 +495,8 @@ export const formatTieredBonusDisplay = (bonusQty, metaItem, product) => {
     if (s > 0) return `${s} ${sUnit}`;
   }
   if (parseFloat(bonusQty || 0) > 0) {
-    return `${formatQty(bonusQty)} ${product?.unit || "PCS"}`;
+    const u = (defaultUnit || product?.unit || "PCS").toUpperCase();
+    return `${formatQty(bonusQty)} ${u}`;
   }
   return "";
 };

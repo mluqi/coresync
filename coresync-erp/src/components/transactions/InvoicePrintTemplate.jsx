@@ -346,10 +346,10 @@ const InvoicePrintTemplate = ({ type, data, tenant, isBulk = false }) => {
                   {item.product?.name || "Barang"}
                 </td>
                 <td className="py-2 px-2 text-center font-mono border-r border-zinc-200">
-                  {formatTieredQtyDisplay(item.qty, (data.metadata?.itemsDetail || []).find(it => String(it.productId) === String(item.productId)), item.product)}
+                  {formatTieredQtyDisplay(item.qty, (data.metadata?.itemsDetail || []).find(it => String(it.productId) === String(item.productId)), item.product, item.unit || item.product?.unit || "PCS")}
                 </td>
                 <td className="py-2 px-2 text-center font-mono font-bold text-emerald-700 border-r border-zinc-200">
-                  {formatTieredQtyDisplay(item.qty, (data.metadata?.itemsDetail || []).find(it => String(it.productId) === String(item.productId)), item.product)}
+                  {formatTieredQtyDisplay(item.qty, (data.metadata?.itemsDetail || []).find(it => String(it.productId) === String(item.productId)), item.product, item.unit || item.product?.unit || "PCS")}
                 </td>
                 <td className="py-2 px-2 text-center font-bold text-emerald-700">
                   SESUAI / BAIK
@@ -501,7 +501,7 @@ const InvoicePrintTemplate = ({ type, data, tenant, isBulk = false }) => {
               const qtyOrdered = parseFloat(soItem?.qty || item.qty || 0);
               const bonusOrdered = parseFloat(soItem?.bonusQty || 0);
               const qtyShipped = parseFloat(item.qtyShipped || item.qty || 0);
-              const unit = item.product?.unit || item.unit || "pcs";
+              const unit = item.unit || item.product?.unit || "pcs";
 
               return (
                 <tr
@@ -770,7 +770,7 @@ const InvoicePrintTemplate = ({ type, data, tenant, isBulk = false }) => {
     const name = item.product?.name || item.name || "Barang";
     const qty = parseFloat(item.qty || item.quantity || 1);
     const bonusQty = parseFloat(item.bonusQty || item.bonus_qty || 0);
-    const unit = item.unit || item.product?.unit || "KRT";
+    const unit = (item.unit || item.product?.unit || "PCS").toUpperCase();
     const price = parseFloat(
       item.price || item.unitPrice || item.product?.sellingPrice || 0,
     );
@@ -814,10 +814,20 @@ const InvoicePrintTemplate = ({ type, data, tenant, isBulk = false }) => {
     calculatedSubtotal += lineSubtotal;
     totalDiscountAmount += discAmount;
 
+    // Check if PO with tiered multi-unit metadata
     const metaItem = (data.metadata?.itemsDetail || []).find(it => String(it.productId) === String(item.productId));
-    const tieredQty = formatTieredQtyDisplay(qty, metaItem, item.product);
-    const tieredBonus = formatTieredBonusDisplay(bonusQty, metaItem, item.product);
-    const qtyString = tieredBonus ? `${tieredQty} (+${tieredBonus} Bns)` : tieredQty;
+    const hasTieredMeta = isPO && metaItem && metaItem.bigUnit && (parseFloat(metaItem.bigQty || 0) > 0 || parseFloat(metaItem.smallQty || 0) > 0);
+
+    let qtyString;
+    if (hasTieredMeta) {
+      const tieredQty = formatTieredQtyDisplay(qty, metaItem, item.product, unit);
+      const tieredBonus = formatTieredBonusDisplay(bonusQty, metaItem, item.product, item.bonusUnit || unit);
+      qtyString = tieredBonus ? `${tieredQty} (+${tieredBonus} Bns)` : tieredQty;
+    } else {
+      const bonusUnit = (item.bonusUnit || unit).toUpperCase();
+      const bonusStr = bonusQty > 0 ? ` (+${formatQty(bonusQty)} ${bonusUnit} Bns)` : "";
+      qtyString = `${formatQty(qty)} ${unit}${bonusStr}`;
+    }
 
     return {
       no: String(idx + 1),

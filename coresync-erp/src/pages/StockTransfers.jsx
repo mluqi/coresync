@@ -66,10 +66,10 @@ const StockTransfers = () => {
     onConfirm: () => {}
   });
 
-  const canRead = hasPermission(user, 'inventory', 'read');
-  const canCreate = hasPermission(user, 'inventory', 'create');
-  const canUpdate = hasPermission(user, 'inventory', 'update');
-  const canDelete = hasPermission(user, 'inventory', 'delete');
+  const canRead = hasPermission(user, 'stock_transfers', 'read') || hasPermission(user, 'inventory', 'read');
+  const canCreate = hasPermission(user, 'stock_transfers', 'create') || hasPermission(user, 'inventory', 'create');
+  const canUpdate = hasPermission(user, 'stock_transfers', 'update') || hasPermission(user, 'inventory', 'update');
+  const canDelete = hasPermission(user, 'stock_transfers', 'delete') || hasPermission(user, 'inventory', 'delete');
 
   const updateParam = (key, value) => {
     const next = new URLSearchParams(searchParams);
